@@ -1,9 +1,10 @@
 # Ohara
 
-A manga library for a home server. Type a title: Ohara finds the volumes through your
-[Prowlarr](https://prowlarr.com/) indexers, picks the best release, downloads it with
-[Transmission](https://transmissionbt.com/), files every volume in its series' folder
-and lets you read it in the browser, on the computer or the phone. Follow a series and
+A manga library for a home server, made to read the volumes you own anywhere, on the
+computer or the phone, without wearing out the paper ones. Type a title: Ohara finds
+the volumes through your [Prowlarr](https://prowlarr.com/) indexers, picks the best
+release, downloads it with [Transmission](https://transmissionbt.com/), files every
+volume in its series' folder and lets you read it in the browser. Follow a series and
 it fetches the missing volumes, then the new ones as they come out.
 
 Named after the island of scholars in *One Piece*, whose library stood around the
