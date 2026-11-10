@@ -5,7 +5,7 @@ const Rotunda = (() => {
   const MIN_BAYS = 8;
   const ROWS = 3; // shelves in a bay
   const PER_ROW = 12; // volume slots on a shelf
-  const FACE = 3; // slots taken by a volume shown face out
+  const FACE = 5; // slots taken by a volume shown face out (a 2:3 cover)
 
   const bayCount = (series) => Math.max(MIN_BAYS, series);
   const step = (count) => 360 / count;

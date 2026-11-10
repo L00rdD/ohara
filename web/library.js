@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPage, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -113,7 +113,7 @@ const Ohara = (() => {
     drum.style.setProperty("--bw", g.bw + "px");
     drum.style.setProperty("--r", g.r.toFixed(0) + "px");
     drum.style.setProperty("--pull", (g.r * 0.96).toFixed(0) + "px");
-    drum.style.setProperty("--below", lib.last ? "170px" : "120px");
+    drum.style.setProperty("--below", lib.last ? "230px" : "120px");
     drum.style.setProperty("--rot", rot + "deg");
     const bays = [];
     for (let i = 0; i < g.count; i++) if (R.visible(R.offset(i, rot, g.count))) bays.push(bay(lib.series[i], i, g));
@@ -173,7 +173,7 @@ const Ohara = (() => {
   function drawLectern() {
     const box = $("lectern");
     const state = lecternState(lib.last, lib.series);
-    box.style.setProperty("--lw", bySize(230, 280, 320) + "px");
+    box.style.setProperty("--lw", bySize(200, 240, 270) + "px");
     box.hidden = state === "hidden";
     if (state === "empty") drawInvitation(box);
     if (state === "reading") drawOpenBook(box, lib.last);
@@ -191,21 +191,13 @@ const Ohara = (() => {
     const cap = el("span", "caption");
     cap.append(el("b", "", v.series), document.createTextNode(", " + W().volume(v.number || v.label)), el("small", "", readingState(v)));
     const book = el("span", "book");
-    const pages = lecternPages(v);
-    for (const [side, url] of [["l", pages[0]], ["r", pages[1]]]) {
-      const page = el("span", "page " + side);
-      if (url) page.style.backgroundImage = `url("${url}")`;
-      book.append(page);
-    }
+    const page = lecternPage(v);
+    if (page) book.style.backgroundImage = `url("${page}")`;
     book.append(el("span", "mark"));
     box.replaceChildren(cap, book, el("span", "desk"), el("span", "stand"));
   }
 
-  function emptyBook() {
-    const book = el("span", "book");
-    book.append(el("span", "page l"), el("span", "page r"));
-    return book;
-  }
+  const emptyBook = () => el("span", "book");
 
   // ---- the lantern ----
   function drawLantern() {

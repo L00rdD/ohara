@@ -114,10 +114,9 @@ const Words = (() => {
     if (last) return "reading";
     return series.length ? "hidden" : "empty";
   }
-  function lecternPages(v) {
-    if (!v.readable) return [null, null];
-    const right = v.page + 1 < (v.pages || Infinity) ? pageUrl(v.id, v.page + 1) : null;
-    return [pageUrl(v.id, v.page), right];
+  // the page shown on the lectern: the one you are at
+  function lecternPage(v) {
+    return v.readable ? pageUrl(v.id, v.page) : null;
   }
 
   // the lantern's glass filled from y 34 (empty) up to y 10 (full); never quite empty while it burns
@@ -151,7 +150,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName };
+    spineLook, lecternState, lecternPage, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

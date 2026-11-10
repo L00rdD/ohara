@@ -64,21 +64,21 @@ test("a long run of missing tomes stands as one place", () => {
 test("a long series shows a window around the volume being read", () => {
   const vols = Array.from({ length: 100 }, (_, i) => vol(i + 1));
   const { shown, before, after } = R.slots({ volumes: vols, missing: [] }, "S/T60.cbz");
-  assert.equal(shown.length, 36 - 2);
+  assert.equal(shown.length, 36 - 4);
   assert.ok(shown.some((x) => x.vol.id === "S/T60.cbz"));
   assert.equal(before + shown.length + after, 100);
   assert.ok(before > 40);
   const atEnd = R.slots({ volumes: vols, missing: [] }, "S/T100.cbz");
   assert.equal(atEnd.after, 0);
-  assert.equal(atEnd.shown.length, 34);
+  assert.equal(atEnd.shown.length, 32);
   const fromStart = R.slots({ volumes: vols, missing: [] }, null);
   assert.equal(fromStart.before, 0);
 });
 
-test("shelves: twelve places each, the face-out volume taking three", () => {
+test("shelves: twelve places each, the face-out volume taking five", () => {
   const shown = Array.from({ length: 14 }, (_, i) => ({ vol: vol(i + 1) }));
   const rows = R.shelves(shown, "S/T2.cbz");
-  assert.deepEqual(rows.map((r) => r.length), [10, 4, 0]);
+  assert.deepEqual(rows.map((r) => r.length), [8, 6, 0]);
   assert.deepEqual(R.shelves([], null).map((r) => r.length), [0, 0, 0]);
   const many = Array.from({ length: 40 }, (_, i) => ({ vol: vol(i + 1) }));
   assert.equal(R.shelves(many, null)[2].length, 16);

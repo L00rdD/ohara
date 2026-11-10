@@ -142,10 +142,8 @@ test("what the lectern shows", () => {
   assert.equal(Ohara.lecternState(null, []), "empty");
   assert.equal(Ohara.lecternState(null, [{}]), "hidden");
   assert.equal(Ohara.lecternState({}, [{}]), "reading");
-  assert.deepEqual(Ohara.lecternPages(vol({ page: 7, pages: 195 })), ["/api/page?vol=S%2FT5.cbz&n=7", "/api/page?vol=S%2FT5.cbz&n=8"]);
-  assert.deepEqual(Ohara.lecternPages(vol({ page: 194, pages: 195 })), ["/api/page?vol=S%2FT5.cbz&n=194", null]);
-  assert.deepEqual(Ohara.lecternPages(vol({ page: 0, pages: 0 })), ["/api/page?vol=S%2FT5.cbz&n=0", "/api/page?vol=S%2FT5.cbz&n=1"]);
-  assert.deepEqual(Ohara.lecternPages(vol({ readable: false })), [null, null]);
+  assert.equal(Ohara.lecternPage(vol({ page: 7, pages: 195 })), "/api/page?vol=S%2FT5.cbz&n=7");
+  assert.equal(Ohara.lecternPage(vol({ readable: false })), null);
 });
 
 test("the lantern's glass", () => {
