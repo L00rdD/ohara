@@ -1,6 +1,6 @@
 // The rotunda's geometry and what each bay holds: pure functions, tested in node.
-// The library is the round wall inside the Tree of Knowledge: one bay per series,
-// at least MIN_BAYS so that a small library still makes a room.
+// The library is the round wall inside the Tree of Knowledge: each series on as many
+// bays as its tomes need, at least MIN_BAYS so that a small library still makes a room.
 const Rotunda = (() => {
   const MIN_BAYS = 8;
   const ROWS = 3; // shelves in a bay
@@ -38,10 +38,10 @@ const Rotunda = (() => {
   // only the bays you can see are drawn: within ±110° of the front
   const visible = (deg) => Math.abs(deg) <= 110;
 
-  // The slots of a series' bay: its volumes and the gaps of the missing ones,
-  // in tome order, as many as fit, around the volume being read (or from the
-  // start). A slot is {vol} or {gap: n}; the volume being read stands face out.
-  function slots(series, readingId) {
+  // The places of a series on the wall: its volumes and the missing ones, in tome
+  // order. A place is {vol}, {gap: n}, or {run: [first, last]} for a long run of
+  // missing tomes; volumes without a number come last.
+  function places(series) {
     const all = [];
     const numbered = series.volumes.filter((v) => v.number);
     const missing = new Set(series.missing || []);
@@ -54,7 +54,7 @@ const Rotunda = (() => {
       else if (missing.has(n)) all.push({ gap: n });
     }
     for (const v of series.volumes) if (!v.number) all.push({ vol: v });
-    return fit(squeeze(all), readingId);
+    return squeeze(all);
   }
 
   // more than RUN missing tomes in a row stand as one empty place: {run: [first, last]}
@@ -78,36 +78,47 @@ const Rotunda = (() => {
     return out;
   }
 
-  // keeps the slots that fit in a bay, the one being read in the window
-  function fit(all, readingId) {
-    const room = ROWS * PER_ROW;
-    const width = (s) => (s.vol && s.vol.id === readingId ? FACE : s.run ? 2 : 1);
-    let at = all.findIndex((s) => s.vol && s.vol.id === readingId);
-    if (at < 0) at = 0;
-    let start = Math.max(0, at - Math.floor(room / 3));
-    let used = 0;
-    let end = start;
-    while (end < all.length && used + width(all[end]) <= room) used += width(all[end++]);
-    while (start > 0 && used + width(all[start - 1]) <= room) used += width(all[--start]);
-    return { shown: all.slice(start, end), before: start, after: all.length - end };
-  }
+  // the room a place takes on a shelf: a volume facing out FACE, a run 2, else 1
+  const width = (place, readingId) => (place.vol && place.vol.id === readingId ? FACE : place.run ? 2 : 1);
 
-  // splits the slots into shelves, a face-out volume taking FACE places
-  function shelves(shown, readingId) {
-    const rows = [[]];
+  // splits places into bays of ROWS shelves of PER_ROW, in order: [[row, row, row], …]
+  function fill(all, readingId) {
+    const bays = [];
+    let rows = null;
     let used = 0;
-    for (const s of shown) {
-      const w = s.vol && s.vol.id === readingId ? FACE : s.run ? 2 : 1;
-      if (used + w > PER_ROW && rows.length < ROWS) {
+    for (const p of all) {
+      const w = width(p, readingId);
+      if (!rows || used + w > PER_ROW) {
+        if (!rows || rows.length === ROWS) bays.push((rows = []));
         rows.push([]);
         used = 0;
       }
-      rows[rows.length - 1].push(s);
+      rows[rows.length - 1].push(p);
       used += w;
     }
-    while (rows.length < ROWS) rows.push([]);
-    return rows;
+    for (const b of bays) while (b.length < ROWS) b.push([]);
+    return bays.length ? bays : [[[], [], []]];
   }
+
+  // the first and last tome on a bay's shelves
+  function span(rows) {
+    const ns = rows.flat().flatMap((p) => (p.run ? p.run : p.gap ? [p.gap] : p.vol.number ? [p.vol.number] : []));
+    return ns.length ? [Math.min(...ns), Math.max(...ns)] : null;
+  }
+
+  // The wall: every series on as many bays as its tomes need, one after the other.
+  // A bay is {series, index (of the series), part, parts, rows, span}.
+  function wall(seriesList, readingId) {
+    const out = [];
+    seriesList.forEach((series, index) => {
+      const bays = fill(places(series), readingId);
+      bays.forEach((rows, part) => out.push({ series, index, part, parts: bays.length, rows, span: span(rows) }));
+    });
+    return out;
+  }
+
+  // the bay holding a volume, or -1
+  const bayOf = (bays, id) => bays.findIndex((b) => b.rows.some((r) => r.some((p) => p.vol && p.vol.id === id)));
 
   // a spine's colour: AniList's colour of the series, or one made from its name
   function colour(name, color) {
@@ -117,7 +128,7 @@ const Rotunda = (() => {
     return `hsl(${h}, 38%, 38%)`;
   }
 
-  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, radius, front, rotationFor, offset, lit, visible, slots, fit, shelves, colour };
+  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, radius, front, rotationFor, offset, lit, visible, places, width, fill, span, wall, bayOf, colour };
 })();
 
 if (typeof module !== "undefined") module.exports = Rotunda;

@@ -114,9 +114,28 @@ const Words = (() => {
     if (last) return "reading";
     return series.length ? "hidden" : "empty";
   }
-  // the page shown on the lectern: the one you are at
-  function lecternPage(v) {
-    return v.readable ? pageUrl(v.id, v.page) : null;
+  // the two pages open on the lectern, as the reader shows them two by two: the
+  // cover alone (on the right, facing a blank page), then 1-2, 3-4…
+  function lecternPages(v) {
+    if (!v.readable) return [null, null];
+    if (v.page === 0) return [null, pageUrl(v.id, 0)];
+    const first = v.page % 2 ? v.page : v.page - 1;
+    const count = v.pages || Infinity;
+    return [pageUrl(v.id, first), first + 1 < count ? pageUrl(v.id, first + 1) : null];
+  }
+
+  // what a bay's plaque says: the series, and which tomes when it takes several bays
+  function plaqueText(bay) {
+    const s = bay.series;
+    const sub = bay.parts > 1 && bay.span ? W().tomes(bay.span[0], bay.span[1]) : W().volumes(s.volumes.length);
+    return { title: s.name, sub: sub + (s.follow && bay.part === 0 ? ` · ${W().followed}` : "") };
+  }
+
+  // what is said under the lectern of the place selected on a shelf
+  function selectionText(place, series) {
+    if (place.vol) return { title: `${series.name}, ${volumeName(place.vol).toLowerCase()}`, state: readingState(place.vol) };
+    const [a, b] = place.run || [place.gap, place.gap];
+    return { title: `${series.name}, ${W().tomes(a, b).toLowerCase()}`, state: W().toGet };
   }
 
   // the lantern's glass filled from y 34 (empty) up to y 10 (full); never quite empty while it burns
@@ -150,7 +169,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPage, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPage, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -56,19 +56,55 @@ const Ohara = (() => {
     return (innerWidth >= 900 ? computer : innerWidth >= 500 ? tablet : phone);
   }
 
+  // the wall of bays: every series on as many bays as its tomes need
+  let wall = [];
+  const readingId = () => (lib.last ? lib.last.id : null);
+
   function geometry() {
     const bw = bySize(220, 260, 300);
-    const count = R.bayCount(lib.series.length);
+    const count = R.bayCount(wall.length);
     return { bw, count, r: R.radius(bw, count, 0.8), persp: bySize(420, 700, 700) };
   }
 
-  function spine(v, s, readingId) {
-    const look = spineLook(v, s, readingId);
-    const b = button("", look.cls, (e) => {
-      e.stopPropagation();
-      location.href = openUrl(v);
-    });
-    b.title = `${s.name}, ${volumeName(v)} (${readingState(v)})`;
+  // ---- what is selected on a shelf, said under the lectern ----
+  // With a mouse, hovering selects and a click opens; on a touch screen the first
+  // touch selects and the second opens.
+  function selection() {
+    let pointer = "mouse";
+    let selected = null;
+    function select(key, place, series) {
+      selected = key;
+      const text = selectionText(place, series);
+      $("selection").querySelector("b").textContent = text.title;
+      $("selection").querySelector("small").textContent = pointer === "mouse" ? text.state : `${text.state} · ${W().tapAgain}`;
+      $("selection").hidden = false;
+    }
+    function unselect(key) {
+      if (selected !== key) return;
+      selected = null;
+      $("selection").hidden = true;
+    }
+    // wires a place on a shelf: hover or first touch selects, then open()
+    function selectable(node, key, place, series, open) {
+      node.onpointerenter = (e) => e.pointerType === "mouse" && select(key, place, series);
+      node.onpointerleave = (e) => e.pointerType === "mouse" && unselect(key);
+      node.onclick = (e) => {
+        e.stopPropagation();
+        if (pointer !== "mouse" && selected !== key) return select(key, place, series);
+        open();
+      };
+      return node;
+    }
+    addEventListener("pointerdown", (e) => (pointer = e.pointerType), true);
+    return selectable;
+  }
+  const selectable = selection();
+
+  function spine(v, s, reading) {
+    const look = spineLook(v, s, reading);
+    const b = selectable(el("button", look.cls), v.id, { vol: v }, s, () => (location.href = openUrl(v)));
+    b.type = "button";
+    b.setAttribute("aria-label", `${s.name}, ${volumeName(v)} (${readingState(v)})`);
     b.style.setProperty("--c", R.colour(s.name, s.meta.color));
     if (look.cover) b.style.backgroundImage = `url("${coverUrl(v.id)}")`;
     if (look.height) b.style.height = look.height + "%";
@@ -76,33 +112,37 @@ const Ohara = (() => {
     return b;
   }
 
-  function bay(s, i, g) {
+  // an empty place on a shelf: a missing tome, or a run of them
+  function hole(place, s, i) {
+    const cls = place.run ? "gap run" : "gap";
+    const node = selectable(el("button", cls, place.run ? `${place.run[0]}–${place.run[1]}` : ""), `${s.name}#${place.run || place.gap}`, place, s, () => openSeries(s, i));
+    node.type = "button";
+    return node;
+  }
+
+  function bay(b, i, g) {
     const deg = R.offset(i, rot, g.count);
-    const b = el("div", "bay");
-    b.style.setProperty("--a", `${i * R.step(g.count)}deg`);
-    b.dataset.i = i;
+    const node = el("div", "bay");
+    node.style.setProperty("--a", `${i * R.step(g.count)}deg`);
     const inner = el("div", "bay-in");
     inner.style.setProperty("--lit", R.lit(deg, 0.6).toFixed(2));
-    b.append(inner);
+    node.append(inner);
     inner.append(el("span", "lamp"));
-    if (!s) {
+    if (!b) {
       inner.append(el("span", "plaque blank", "·"), el("div", "ledge"), el("div", "ledge"), el("div", "ledge"));
-      return b;
+      return node;
     }
-    const plaque = button(s.name, "plaque", () => openSeries(s, i));
-    plaque.append(el("small", "", W().volumes(s.volumes.length) + (s.follow ? ` · ${W().followed}` : "")));
+    const text = plaqueText(b);
+    const plaque = button(text.title, "plaque", () => openSeries(b.series, i));
+    plaque.append(el("small", "", text.sub));
     inner.append(plaque);
-    const readingId = lib.last && lib.last.series === s.name ? lib.last.id : null;
-    const { shown, before, after } = R.slots(s, readingId);
-    R.shelves(shown, readingId).forEach((row, k) => {
+    for (const row of b.rows) {
       const ledge = el("div", "ledge");
-      if (k === 0 && before) ledge.append(el("span", "more", `+${before}`));
-      ledge.append(...row.map((slot) => (slot.vol ? spine(slot.vol, s, readingId) : slot.run ? el("span", "gap run", `${slot.run[0]}–${slot.run[1]}`) : el("span", "gap"))));
-      if (k === R.ROWS - 1 && after) ledge.append(el("span", "more", `+${after}`));
+      ledge.append(...row.map((p) => (p.vol ? spine(p.vol, b.series, readingId()) : hole(p, b.series, i))));
       inner.append(ledge);
-    });
-    inner.onclick = () => openSeries(s, i);
-    return b;
+    }
+    inner.onclick = () => openSeries(b.series, i);
+    return node;
   }
 
   function drawRotunda() {
@@ -113,10 +153,10 @@ const Ohara = (() => {
     drum.style.setProperty("--bw", g.bw + "px");
     drum.style.setProperty("--r", g.r.toFixed(0) + "px");
     drum.style.setProperty("--pull", (g.r * 0.96).toFixed(0) + "px");
-    drum.style.setProperty("--below", lib.last ? "230px" : "120px");
+    drum.style.setProperty("--below", lib.last ? bySize("290px", "320px", "330px") : "120px");
     drum.style.setProperty("--rot", rot + "deg");
     const bays = [];
-    for (let i = 0; i < g.count; i++) if (R.visible(R.offset(i, rot, g.count))) bays.push(bay(lib.series[i], i, g));
+    for (let i = 0; i < g.count; i++) if (R.visible(R.offset(i, rot, g.count))) bays.push(bay(wall[i], i, g));
     drum.replaceChildren(...bays);
   }
 
@@ -173,31 +213,39 @@ const Ohara = (() => {
   function drawLectern() {
     const box = $("lectern");
     const state = lecternState(lib.last, lib.series);
-    box.style.setProperty("--lw", bySize(200, 240, 270) + "px");
+    box.style.setProperty("--lw", bySize(260, 320, 340) + "px");
     box.hidden = state === "hidden";
     if (state === "empty") drawInvitation(box);
     if (state === "reading") drawOpenBook(box, lib.last);
   }
 
   function drawInvitation(box) {
-    box.removeAttribute("href");
     const cap = el("span", "caption", W().emptyTitle);
     cap.append(el("small", "", W().emptyText));
     box.replaceChildren(cap, button(W().emptyAction, "action", openSearch), emptyBook(), el("span", "desk"), el("span", "stand"));
   }
 
+  // the volume being read, open on the lectern at the two pages you left it at
   function drawOpenBook(box, v) {
-    box.href = openUrl(v);
     const cap = el("span", "caption");
     cap.append(el("b", "", v.series), document.createTextNode(", " + W().volume(v.number || v.label)), el("small", "", readingState(v)));
-    const book = el("span", "book");
-    const page = lecternPage(v);
-    if (page) book.style.backgroundImage = `url("${page}")`;
+    const book = el("a", "book");
+    book.href = openUrl(v);
+    book.title = readLabel(v);
+    for (const [side, url] of [["l", lecternPages(v)[0]], ["r", lecternPages(v)[1]]]) {
+      const page = el("span", "page " + side);
+      if (url) page.style.backgroundImage = `url("${url}")`;
+      book.append(page);
+    }
     book.append(el("span", "mark"));
     box.replaceChildren(cap, book, el("span", "desk"), el("span", "stand"));
   }
 
-  const emptyBook = () => el("span", "book");
+  function emptyBook() {
+    const book = el("span", "book");
+    book.append(el("span", "page l"), el("span", "page r"));
+    return book;
+  }
 
   // ---- the lantern ----
   function drawLantern() {
@@ -464,10 +512,11 @@ const Ohara = (() => {
 
   // ---- loading ----
   function draw() {
+    wall = R.wall(lib.series, readingId());
     if (!turnedOnce && lib.last) {
-      // the rotunda opens facing the series being read
-      const i = lib.series.findIndex((s) => s.name === lib.last.series);
-      if (i >= 0) rot = R.rotationFor(i, 0, R.bayCount(lib.series.length));
+      // the rotunda opens facing the bay of the volume being read
+      const i = R.bayOf(wall, lib.last.id);
+      if (i >= 0) rot = R.rotationFor(i, 0, R.bayCount(wall.length));
       turnedOnce = true;
     }
     drawRotunda();
@@ -487,21 +536,19 @@ const Ohara = (() => {
     timer = setTimeout(load, lib.downloads.length ? 5000 : 60000);
   }
 
-  const ACTIONS = {
-    close: () => closeAll(),
-    left: () => turnBy(-1),
-    right: () => turnBy(1),
-    search: () => openSearch(),
-    open: () => {
-      const i = R.front(rot, geometry().count);
-      if (lib.series[i]) openSeries(lib.series[i], i);
-    },
-  };
   function keys(e) {
     const action = keyAction(e.key, Boolean(e.target.closest("input, textarea")));
     if (!action || (action === "open" && e.target !== $("rotunda"))) return;
     e.preventDefault();
-    ACTIONS[action]();
+    const front = wall[R.front(rot, geometry().count)];
+    const actions = {
+      close: closeAll,
+      left: () => turnBy(-1),
+      right: () => turnBy(1),
+      search: openSearch,
+      open: () => front && openSeries(front.series, R.front(rot, geometry().count)),
+    };
+    actions[action]();
   }
 
   function closeAll() {

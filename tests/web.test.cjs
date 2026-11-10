@@ -142,8 +142,14 @@ test("what the lectern shows", () => {
   assert.equal(Ohara.lecternState(null, []), "empty");
   assert.equal(Ohara.lecternState(null, [{}]), "hidden");
   assert.equal(Ohara.lecternState({}, [{}]), "reading");
-  assert.equal(Ohara.lecternPage(vol({ page: 7, pages: 195 })), "/api/page?vol=S%2FT5.cbz&n=7");
-  assert.equal(Ohara.lecternPage(vol({ readable: false })), null);
+  const url = (n) => `/api/page?vol=S%2FT5.cbz&n=${n}`;
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 0, pages: 195 })), [null, url(0)]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 7, pages: 195 })), [url(7), url(8)]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 8, pages: 195 })), [url(7), url(8)]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 194, pages: 195 })), [url(193), url(194)]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 195, pages: 196 })), [url(195), null]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 3, pages: 0 })), [url(3), url(4)]);
+  assert.deepEqual(Ohara.lecternPages(vol({ readable: false })), [null, null]);
 });
 
 test("the lantern's glass", () => {
@@ -188,4 +194,18 @@ test("a volume's name in the language chosen", () => {
   assert.equal(fr(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Tome 5");
   assert.equal(en(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Volume 5");
   assert.equal(en(() => Ohara.volumeName({ number: null, label: "Artbook" })), "Artbook");
+});
+
+test("what a bay's plaque says", () => {
+  const s = { name: "Naruto", follow: true, volumes: new Array(72) };
+  assert.deepEqual(fr(() => Ohara.plaqueText({ series: s, part: 0, parts: 1, span: [1, 72] })), { title: "Naruto", sub: "72 tomes · suivie" });
+  assert.deepEqual(fr(() => Ohara.plaqueText({ series: s, part: 1, parts: 2, span: [37, 72] })), { title: "Naruto", sub: "Tomes 37 à 72" });
+  assert.deepEqual(en(() => Ohara.plaqueText({ series: { ...s, follow: false }, part: 0, parts: 2, span: [1, 36] })), { title: "Naruto", sub: "Volumes 1 to 36" });
+});
+
+test("what is said of the place selected", () => {
+  const s = { name: "Naruto" };
+  assert.deepEqual(fr(() => Ohara.selectionText({ vol: vol({ number: 12, pages: 180, page: 2 }) }, s)), { title: "Naruto, tome 12", state: "page 3 sur 180" });
+  assert.deepEqual(fr(() => Ohara.selectionText({ run: [1, 97] }, s)), { title: "Naruto, tomes 1 à 97", state: "à récupérer" });
+  assert.deepEqual(en(() => Ohara.selectionText({ gap: 7 }, s)), { title: "Naruto, volume 7", state: "to get" });
 });
