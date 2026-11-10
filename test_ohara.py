@@ -195,6 +195,32 @@ class Search(Library):
             self.assertEqual(ohara.prowlarr_key(), "fromenv")
 
 
+class Indexers(Library):
+    FOUND = [
+        {"id": 1, "name": "YggReborn", "enable": True, "capabilities": {"categories": [{"id": 7000}, {"id": 2000}]}},
+        {"id": 2, "name": "EZTV", "enable": True, "capabilities": {"categories": [{"id": 5000}]}},
+        {"id": 3, "name": "Nyaa.si", "enable": False, "capabilities": {"categories": [{"id": 7030}]}},
+        {"id": 4, "name": "Knaben", "enable": True},
+    ]
+
+    def fake(self, url, data=None, headers=None, timeout=60):
+        return [{"indexerId": 4, "disabledTill": "2999-01-01T00:00:00Z"}, {"indexerId": 1, "disabledTill": "2000-01-01T00:00:00Z"}, {"indexerId": 2}] if url.endswith("/indexerstatus") else self.FOUND
+
+    def test_list_with_their_state(self):
+        with mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "http_json", side_effect=self.fake):
+            found = ohara.indexers()
+        self.assertEqual([(i["name"], i["on"], i["failing"], i["chosen"], i["books"]) for i in found], [
+            ("Knaben", True, True, True, False), ("Nyaa.si", False, False, True, True), ("YggReborn", True, False, True, True), ("EZTV", True, False, False, False)])
+
+    def test_choice_is_kept_and_used(self):
+        ohara.choose_indexers(["EZTV", 3])
+        self.assertEqual(ohara.chosen_indexers(), ["EZTV"])
+        with mock.patch.object(ohara, "http_json", side_effect=self.fake):
+            self.assertEqual(ohara.indexer_ids("K"), [2])
+        ohara.choose_indexers([])
+        self.assertEqual(ohara.chosen_indexers(), ohara.INDEXERS)
+
+
 class AniList(Library):
     ANSWER = {"data": {"Page": {"media": [{"id": 5, "title": {"romaji": "Sousou no Frieren", "english": None},
                                            "coverImage": {"extraLarge": None, "large": "http://c/l.jpg", "color": "#e4ae5d"},
@@ -207,6 +233,17 @@ class AniList(Library):
         self.assertEqual(call.call_args.kwargs["headers"]["User-Agent"], "Ohara/1.0")
         with mock.patch.object(ohara, "http_json", return_value={"data": {"Page": {"media": []}}}):
             self.assertEqual(ohara.anilist_fetch("zzz"), {})
+
+    def test_the_entry_named_like_the_series_wins(self):
+        found = [{"title": {"romaji": "Nigai Kajitsu", "english": "A Bitter Fruit", "native": None}, "synonyms": ["BLUE PERIOD"]},
+                 {"title": {"romaji": "Blue Period", "english": "Blue Period", "native": "ブルーピリオド"}, "synonyms": []},
+                 {"title": {"romaji": "Blue Period Anthology", "english": None, "native": None}, "synonyms": None}]
+        self.assertIs(ohara.best_match("Blue Period", found), found[1])
+        self.assertIs(ohara.best_match("Blue Period", [found[0], found[2]]), found[0])
+        self.assertIs(ohara.best_match("Blue Period Anthology", found), found[2])
+        self.assertIs(ohara.best_match("Zzz", found), found[0])
+        by_synonym = {"title": {"romaji": "X"}, "synonyms": ["BP"]}
+        self.assertIs(ohara.best_match("B.P.", [found[0], by_synonym]), by_synonym)
 
     def test_lookup_is_kept(self):
         with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5}) as fetch:
@@ -479,7 +516,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}})
 
 
 class Http(Reading):
@@ -531,6 +568,10 @@ class Http(Reading):
         with mock.patch.object(ohara, "set_follow") as follow:
             self.assertEqual(self.call("POST", "/api/follow", {"series": "N", "follow": True})[0], 200)
         follow.assert_called_once_with("N", True)
+        with mock.patch.object(ohara, "indexers", return_value=[{"name": "X"}]) as listed, mock.patch.object(ohara, "choose_indexers") as choose:
+            self.assertEqual(json.loads(self.call("GET", "/api/indexers")[2]), [{"name": "X"}])
+            self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
+        choose.assert_called_once_with(["X"])
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
         cancel.assert_called_once_with("H")

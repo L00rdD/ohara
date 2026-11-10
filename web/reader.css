@@ -15,17 +15,17 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee; font: 15px 
 
 .bar {
   position: fixed; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; background: rgba(28, 42, 38, 0.95); color: #f1e9d6; transition: transform 0.2s;
+  padding: 10px 14px; background: rgba(42, 26, 14, 0.95); color: #f1e9d6; transition: transform 0.2s;
 }
 #top { top: 0; transform: translateY(-100%); padding-top: max(10px, env(safe-area-inset-top)); }
 #bottom { bottom: 0; transform: translateY(100%); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 body.bars #top, body.bars #bottom { transform: none; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.count { font-variant-numeric: tabular-nums; color: #a9bdb2; }
+.count { font-variant-numeric: tabular-nums; color: #c9ae86; }
 #slider { flex: 1; accent-color: #f0b44c; }
 
 .btn {
-  display: inline-block; padding: 8px 14px; border: 1px solid #31473f; border-radius: 999px; background: #24362f;
+  display: inline-block; padding: 8px 14px; border: 1px solid #6b4528; border-radius: 999px; background: #3a2414;
   color: inherit; font: inherit; text-decoration: none; cursor: pointer; white-space: nowrap;
 }
 /* the corner button that shows the bars, faint until hovered */
@@ -36,7 +36,7 @@ body.bars #top, body.bars #bottom { transform: none; }
 
 .end {
   position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; background: rgba(28, 42, 38, 0.94); color: #f1e9d6;
+  gap: 14px; background: rgba(30, 18, 9, 0.94); color: #f1e9d6;
 }
 .end p { font-size: 1.4rem; margin: 0 0 8px; }
 

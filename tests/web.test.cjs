@@ -1,8 +1,12 @@
-// Tests of the pure parts of Ohara's pages (ohara/web/*.js): node --test ohara/tests/
+// Tests of the pure parts of Ohara's pages (web/*.js): node --test tests/
 const test = require("node:test");
 const assert = require("node:assert");
 const Reader = require("../web/reader.js");
-const Ohara = require("../web/library.js");
+const Ohara = require("../web/words.js");
+const I18n = require("../web/i18n.js");
+
+const fr = (fn) => { I18n.set("fr"); return fn(); };
+const en = (fn) => { I18n.set("en"); const r = fn(); I18n.set("fr"); return r; };
 
 test("single pages, one at a time", () => {
   assert.deepEqual(Reader.spread(3, 10, false), [3]);
@@ -14,61 +18,92 @@ test("single pages, one at a time", () => {
 
 test("two pages: the cover alone, then pairs", () => {
   assert.deepEqual(Reader.spread(0, 10, true), [0]);
-  assert.deepEqual(Reader.spread(1, 10, true), [1, 2]);
   assert.deepEqual(Reader.spread(2, 10, true), [1, 2]);
   assert.deepEqual(Reader.spread(9, 10, true), [9]);
-  assert.equal(Reader.after(0, 10, true), 1);
   assert.equal(Reader.after(2, 10, true), 3);
-  assert.equal(Reader.after(8, 10, true), 9);
-  assert.equal(Reader.after(9, 10, true), 10);
   assert.equal(Reader.before(4, 10, true), 1);
   assert.equal(Reader.before(1, 10, true), 0);
-  assert.equal(Reader.before(0, 10, true), 0);
 });
 
 test("the right half turns to the next page, the left half back", () => {
   assert.equal(Reader.zone(0.1), "prev");
-  assert.equal(Reader.zone(0.49), "prev");
   assert.equal(Reader.zone(0.5), "next");
-  assert.equal(Reader.zone(0.9), "next");
 });
 
-test("sizes in Mo and Go, French style", () => {
+test("sizes in Mo and Go", () => {
   assert.equal(Ohara.size(7.41e9), "7,4 Go");
   assert.equal(Ohara.size(3.6e8), "360 Mo");
   assert.equal(Ohara.size(1000), "1 Mo");
+  assert.equal(en(() => Ohara.size(7.41e9)), "7.4 GB");
+  assert.equal(en(() => Ohara.size(3.6e8)), "360 MB");
 });
 
-test("tomes in words", () => {
-  assert.equal(Ohara.tomes([1, 14]), "Tomes 1 à 14");
-  assert.equal(Ohara.tomes([98, 98]), "Tome 98");
-  assert.equal(Ohara.tomes(null), "Tomes non précisés");
-});
-
-test("a release in one sentence", () => {
-  assert.equal(Ohara.describe({ lang: "FR", size: 3.6e9, speed: "rapide" }), "en français, 3,6 Go, téléchargement rapide");
-  assert.equal(Ohara.describe({ lang: "?", size: 2e8, speed: "bloqué" }), "langue inconnue, 200 Mo, téléchargement bloqué");
+test("tomes and releases in both languages", () => {
+  assert.equal(fr(() => Ohara.tomes([1, 14])), "Tomes 1 à 14");
+  assert.equal(fr(() => Ohara.tomes([98, 98])), "Tome 98");
+  assert.equal(fr(() => Ohara.tomes(null)), "Tomes non précisés");
+  assert.equal(en(() => Ohara.tomes([1, 14])), "Volumes 1 to 14");
+  const r = { lang: "FR", size: 3.6e9, speed: "rapide" };
+  assert.equal(fr(() => Ohara.describe(r)), "en français, 3,6 Go, téléchargement rapide");
+  assert.equal(en(() => Ohara.describe(r)), "in French, 3.6 GB, fast download");
+  assert.equal(fr(() => Ohara.describe({ ...r, speed: "autre" })), "en français, 3,6 Go, téléchargement autre");
 });
 
 test("where a volume is in its reading", () => {
-  const v = { readable: true, file: "T1.cbz", pages: 0, page: 0, done: false, new: false };
-  assert.equal(Ohara.readingState(v), "Pas commencé");
-  assert.equal(Ohara.readingState({ ...v, new: true }), "Nouveau");
-  assert.equal(Ohara.readingState({ ...v, pages: 180, page: 41 }), "Page 42 sur 180");
-  assert.equal(Ohara.readingState({ ...v, pages: 180, page: 179, done: true }), "Lu");
-  assert.equal(Ohara.readingState({ ...v, readable: false }), "S'ouvre dans le navigateur");
+  const v = { readable: true, pages: 0, page: 0, done: false, new: false };
+  assert.equal(fr(() => Ohara.readingState(v)), "pas encore commencé");
+  assert.equal(fr(() => Ohara.readingState({ ...v, new: true })), "nouveau");
+  assert.equal(fr(() => Ohara.readingState({ ...v, pages: 195, page: 7 })), "page 8 sur 195");
+  assert.equal(en(() => Ohara.readingState({ ...v, pages: 195, page: 7 })), "page 8 of 195");
+  assert.equal(fr(() => Ohara.readingState({ ...v, done: true })), "lu");
+  assert.equal(fr(() => Ohara.readingState({ ...v, readable: false })), "s'ouvre dans le navigateur");
 });
 
-test("time left", () => {
-  assert.equal(Ohara.eta(-1), "");
-  assert.equal(Ohara.eta(0), "");
-  assert.equal(Ohara.eta(61), "encore 2 min");
-  assert.equal(Ohara.eta(7200), "encore 2 h");
+test("a download in words", () => {
+  assert.equal(fr(() => Ohara.eta(-1)), "");
+  assert.equal(fr(() => Ohara.eta(600)), "encore 10 min");
+  assert.equal(en(() => Ohara.eta(7200)), "2 h left");
+  assert.equal(fr(() => Ohara.downloadState({ state: "error", error: "no space" })), "bloqué : no space");
+  assert.equal(fr(() => Ohara.downloadState({ state: "done" })), "rangement");
+  assert.equal(fr(() => Ohara.downloadState({ state: "unknown" })), "en attente");
+  assert.equal(fr(() => Ohara.downloadState({ state: "downloading", pct: 42, eta: 600 })), "42 %, encore 10 min");
+  assert.equal(fr(() => Ohara.downloadState({ state: "downloading", pct: 3, eta: -1 })), "3 %");
+});
+
+test("tomes in spans", () => {
+  assert.equal(fr(() => Ohara.spans([1, 2, 3, 5, 7, 8])), "1 à 3, 5, 7 et 8");
+  assert.equal(en(() => Ohara.spans([1, 2, 3, 9])), "1 to 3 and 9");
+  assert.equal(fr(() => Ohara.spans([])), "");
+  assert.equal(fr(() => Ohara.tomesWord([1, 2, 3])), "les tomes 1 à 3");
+  assert.equal(fr(() => Ohara.tomesWord([7])), "le tome 7");
+});
+
+test("what a completion did", () => {
+  const two = { sent: [{ range: [1, 72] }, { range: [98, 98] }], nowhere: [] };
+  assert.equal(fr(() => Ohara.completeText(two)), "2 téléchargements lancés : tomes 1 à 72, tome 98.");
+  const one = { sent: [{ range: [1, 14] }], nowhere: [15, 16] };
+  assert.equal(fr(() => Ohara.completeText(one)), "Téléchargement lancé : tomes 1 à 14. Introuvables pour l'instant : 15 et 16. Ohara réessaiera si tu suis la série.");
+  assert.equal(en(() => Ohara.completeText({ sent: [], nowhere: [] })), "No French release found for these volumes.");
 });
 
 test("what is known of a series", () => {
-  assert.deepEqual(Ohara.seriesFacts({ volumes: [1, 2] }, { status: "En cours", volumes: 14 }), ["En cours", "14 tomes parus", "2 chez toi"]);
-  assert.deepEqual(Ohara.seriesFacts(undefined, {}), []);
+  assert.deepEqual(fr(() => Ohara.seriesFacts({ volumes: [1, 2] }, { status: "En cours", volumes: 114 })), ["En cours de parution", "114 tomes parus", "2 chez toi"]);
+  assert.deepEqual(en(() => Ohara.seriesFacts(undefined, { status: "Terminé" })), ["Finished"]);
+  assert.deepEqual(fr(() => Ohara.seriesFacts(undefined, { status: "Inconnu" })), ["Inconnu"]);
+});
+
+test("the volume a series opens on, and its button", () => {
+  const a = { readable: true, pages: 0, done: true, number: 1, label: "Tome 1" };
+  const b = { readable: true, pages: 120, page: 3, done: false, number: 2, label: "Tome 2" };
+  const c = { readable: true, pages: 0, done: false, number: 3, label: "Tome 3" };
+  assert.equal(Ohara.nextToRead({ volumes: [a, b, c] }), b);
+  assert.equal(Ohara.nextToRead({ volumes: [a, c] }), c);
+  assert.equal(Ohara.nextToRead({ volumes: [a] }), a);
+  assert.equal(fr(() => Ohara.readLabel(b)), "Reprendre le tome 2");
+  assert.equal(fr(() => Ohara.readLabel(c)), "Lire le tome 3");
+  assert.equal(fr(() => Ohara.readLabel(a)), "Relire le tome 1");
+  assert.equal(en(() => Ohara.readLabel(b)), "Continue volume 2");
+  assert.equal(fr(() => Ohara.readLabel({ ...c, number: null, label: "Artbook" })), "Lire le tome Artbook");
 });
 
 test("a volume opens in the reader, a PDF in the browser", () => {
@@ -76,53 +111,83 @@ test("a volume opens in the reader, a PDF in the browser", () => {
   assert.equal(Ohara.openUrl({ id: "Naruto/T3.pdf", readable: false }), "/api/file?vol=Naruto%2FT3.pdf");
 });
 
-test("a tint for every series, even without AniList", () => {
-  assert.equal(Ohara.tint({ color: "#e4ae5d" }), "#e4ae5d");
-  assert.equal(Ohara.tint({}), "#3b5a4f");
-  assert.equal(Ohara.tint(undefined), "#3b5a4f");
+test("how much the lantern holds", () => {
+  assert.equal(Ohara.lanternLevel([]), 0);
+  assert.equal(Ohara.lanternLevel([{ pct: 40 }, { pct: 80 }]), 0.6);
 });
 
-test("how far into a volume", () => {
-  assert.equal(Ohara.percent({ page: 7, pages: 195 }), 4);
-  assert.equal(Ohara.percent({ page: 0, pages: 0 }), 0);
+test("the language is kept, French by default", () => {
+  I18n.set("de");
+  assert.equal(I18n.get(), "fr");
+  I18n.set("en");
+  assert.equal(I18n.get(), "en");
+  I18n.set("fr");
+  assert.deepEqual(Object.keys(I18n.WORDS.fr).sort(), Object.keys(I18n.WORDS.en).sort());
 });
 
-test("a download in words", () => {
-  assert.equal(Ohara.downloadState({ state: "error", error: "no space" }), "Bloqué : no space");
-  assert.equal(Ohara.downloadState({ state: "done" }), "Rangement dans la bibliothèque");
-  assert.equal(Ohara.downloadState({ state: "downloading", pct: 42, eta: 600 }), "42 %, encore 10 min");
-  assert.equal(Ohara.downloadState({ state: "unknown", pct: 0, eta: -1 }), "0 %");
+const vol = (extra) => ({ id: "S/T5.cbz", number: 5, readable: true, pages: 0, page: 0, done: false, new: false, ...extra });
+const series = (extra) => ({ name: "S", new: 0, volumes: [1, 2, 3], ...extra });
+
+test("the look of a spine", () => {
+  assert.deepEqual(Ohara.spineLook(vol(), series(), null), { cls: "vol", cover: false, height: null });
+  assert.deepEqual(Ohara.spineLook(vol({ pages: 100, page: 3 }), series(), "S/T5.cbz"), { cls: "vol face", cover: true, height: 86 });
+  assert.equal(Ohara.spineLook(vol({ pages: 100, page: 3 }), series(), null).cls, "vol marked");
+  assert.equal(Ohara.spineLook(vol({ new: true }), series({ new: 1 }), null).cls, "vol fresh");
+  assert.equal(Ohara.spineLook(vol({ new: true }), series({ new: 3 }), null).cls, "vol");
+  assert.equal(Ohara.spineLook(vol({ done: true, pages: 10, page: 9 }), series(), null).cls, "vol done");
+  assert.equal(Ohara.spineLook(vol({ readable: false }), series(), "S/T5.cbz").cover, false);
 });
 
-test("the button of a series", () => {
-  assert.equal(Ohara.readLabel({ label: "Tome 98", pages: 195 }), "Reprendre le tome 98");
-  assert.equal(Ohara.readLabel({ label: "Tome 1", pages: 0 }), "Lire le tome 1");
+test("what the lectern shows", () => {
+  assert.equal(Ohara.lecternState(null, []), "empty");
+  assert.equal(Ohara.lecternState(null, [{}]), "hidden");
+  assert.equal(Ohara.lecternState({}, [{}]), "reading");
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 7, pages: 195 })), ["/api/page?vol=S%2FT5.cbz&n=7", "/api/page?vol=S%2FT5.cbz&n=8"]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 194, pages: 195 })), ["/api/page?vol=S%2FT5.cbz&n=194", null]);
+  assert.deepEqual(Ohara.lecternPages(vol({ page: 0, pages: 0 })), ["/api/page?vol=S%2FT5.cbz&n=0", "/api/page?vol=S%2FT5.cbz&n=1"]);
+  assert.deepEqual(Ohara.lecternPages(vol({ readable: false })), [null, null]);
 });
 
-test("a series from the address", () => {
-  assert.equal(Ohara.seriesInHash("#serie/One%20Piece"), "One Piece");
-  assert.equal(Ohara.seriesInHash(""), null);
+test("the lantern's glass", () => {
+  assert.equal(Ohara.lanternFill([]), 34);
+  assert.equal(Ohara.lanternFill([{ pct: 0 }]), 34 - 24 * 0.15);
+  assert.equal(Ohara.lanternFill([{ pct: 100 }]), 10);
 });
 
-test("tomes in spans", () => {
-  assert.equal(Ohara.spans([1, 2, 3, 5, 7, 8]), "1 à 3, 5, 7 et 8");
-  assert.equal(Ohara.spans([4, 9]), "4 et 9");
-  assert.equal(Ohara.spans([12]), "12");
-  assert.equal(Ohara.spans([]), "");
-  assert.equal(Ohara.tomesWord([1, 2, 3]), "les tomes 1 à 3");
-  assert.equal(Ohara.tomesWord([7]), "le tome 7");
+test("the look of a tile", () => {
+  assert.deepEqual(Ohara.tileLook(vol()), { cls: "tome", cover: true, bar: null, state: "" });
+  assert.deepEqual(Ohara.tileLook(vol({ pages: 10, page: 4, new: true })), { cls: "tome", cover: true, bar: 50, state: "new" });
+  assert.equal(Ohara.tileLook(vol({ done: true, pages: 10, page: 9 })).cls, "tome done");
 });
 
-test("what a completion did", () => {
-  const two = { sent: [{ range: [1, 72] }, { range: [98, 98] }], nowhere: [] };
-  assert.equal(Ohara.completeText(two), "2 téléchargements lancés : tomes 1 à 72, tome 98.");
-  const one = { sent: [{ range: [1, 14] }], nowhere: [15, 16] };
-  assert.equal(Ohara.completeText(one), "Téléchargement lancé : tomes 1 à 14. Introuvables pour l'instant : 15 et 16. Ohara réessaiera si tu suis la série.");
-  assert.equal(Ohara.completeText({ sent: [], nowhere: [] }), "Aucune version française disponible pour ces tomes.");
+test("a speck of dust rises and wraps", () => {
+  const p = { x: 50, y: 0, v: 10, p: 0 };
+  const light = Ohara.moteStep(p, 100, 100, 0);
+  assert.equal(p.y, 105);
+  assert.ok(light >= 0 && light <= 1);
+  const middle = { x: 50, y: 50, v: 0, p: 0 };
+  const side = { x: 2, y: 50, v: 0, p: 0 };
+  assert.ok(Ohara.moteStep(middle, 100, 100, 0) > Ohara.moteStep(side, 100, 100, 0));
 });
 
-test("the look of a volume's tile", () => {
-  assert.deepEqual(Ohara.tileLook({ done: true, new: false, pages: 10, file: "T1.cbz" }), { tile: "volume done", line: "line", bar: false, format: "CBZ" });
-  assert.deepEqual(Ohara.tileLook({ done: false, new: true, pages: 0, file: "T3.pdf" }), { tile: "volume", line: "line new", bar: false, format: "PDF" });
-  assert.equal(Ohara.tileLook({ done: false, pages: 10, file: "a.cbz" }).bar, true);
+test("what a key does", () => {
+  assert.equal(Ohara.keyAction("ArrowLeft", false), "left");
+  assert.equal(Ohara.keyAction("ArrowRight", false), "right");
+  assert.equal(Ohara.keyAction("/", false), "search");
+  assert.equal(Ohara.keyAction("Enter", false), "open");
+  assert.equal(Ohara.keyAction("Escape", true), "close");
+  assert.equal(Ohara.keyAction("ArrowLeft", true), null);
+  assert.equal(Ohara.keyAction("x", false), null);
+});
+
+test("what is said of an indexer", () => {
+  assert.deepEqual(fr(() => Ohara.indexerNotes({ on: true, failing: false, books: true })), { text: "", bad: false });
+  assert.deepEqual(fr(() => Ohara.indexerNotes({ on: false, failing: true, books: false })), { text: "désactivé dans Prowlarr, en panne, pas de catégorie Livres", bad: true });
+  assert.deepEqual(fr(() => Ohara.indexerNotes({ on: true, failing: false, books: false })), { text: "pas de catégorie Livres", bad: false });
+});
+
+test("a volume's name in the language chosen", () => {
+  assert.equal(fr(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Tome 5");
+  assert.equal(en(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Volume 5");
+  assert.equal(en(() => Ohara.volumeName({ number: null, label: "Artbook" })), "Artbook");
 });

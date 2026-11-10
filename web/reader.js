@@ -50,8 +50,9 @@ const Reader = (() => {
     stage.scrollTo(0, 0);
     $("count").textContent = `${shown.map((n) => n + 1).join("-")} / ${info.count}`;
     $("slider").value = page + 1;
-    $("mode").textContent = settings.double ? "2 pages" : "1 page";
-    $("fit").textContent = settings.fit === "height" ? "Ajuster : hauteur" : "Ajuster : largeur";
+    const w = I18n.words();
+    $("mode").textContent = settings.double ? w.twoPages : w.onePage;
+    $("fit").textContent = settings.fit === "height" ? w.fitHeight : w.fitWidth;
     preload(after(page, info.count, settings.double));
     save();
   }
@@ -114,6 +115,9 @@ const Reader = (() => {
   }
 
   async function start() {
+    for (const e of document.querySelectorAll("[data-w]")) e.textContent = I18n.words()[e.dataset.w];
+    document.documentElement.lang = I18n.get();
+    $("menu").title = I18n.words().menu;
     info = await (await fetch("/api/pages?vol=" + encodeURIComponent(vid))).json();
     document.title = `${info.series} · ${info.label}`;
     $("title").textContent = document.title;

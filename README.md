@@ -12,32 +12,40 @@ Tree of Knowledge.
 
 ## What it does
 
-- **One result per series.** The releases an indexer returns are grouped by series,
-  whatever each one calls it ("Frieren", "Sousou no Frieren"), with the cover, the
-  status and the number of volumes from [AniList](https://anilist.co). The best
-  release is picked for you (French first, then one that has seeders, then the most
-  volumes) and said in one sentence: *Tomes 1 à 14 en français, 3,6 Go,
-  téléchargement rapide*. The other releases are folded below it.
-- **Only books.** Ohara asks the indexers for their *Books* category and drops videos,
-  music, games and adult releases.
-- **The whole series.** A series page says which volumes are missing, from the first
-  to the last one out, and fetches them: the cheapest releases per missing volume
-  (a fixed price per torrent favours packs, slow torrents cost more, colour editions
-  count as another series), then drops the packs a bigger one made useless.
-- **Follow.** A followed series is kept complete: at once, then every 12 hours.
-  New volumes wear a *Nouveau* ribbon until opened.
+- **Inside the Tree of Knowledge.** The library is the round wall of a hollow trunk,
+  drawn in 3D around you: one bay per series with its carved plaque, the volumes on
+  the shelves by their spines, the missing ones as empty places. Turn it by dragging,
+  with the wheel, the arrow keys or the buttons on the sides; light falls from the
+  canopy on the bay in front, lanterns hang on the posts, dust floats in the light.
+- **The lectern.** The volume you are reading lies open in the middle of the rotunda,
+  at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
+  a ribbon hanging from their spine. The rotunda opens facing the series being read.
+- **The lantern.** Downloads under way light the lantern in the header, the more the
+  further they have come; it opens on a parchment with each one. Off when idle.
+- **One result per series.** Search from the header: the releases an indexer returns
+  are grouped by series, whatever each one calls it ("Frieren", "Sousou no Frieren"),
+  on a librarian's index card with the cover, status and number of volumes from
+  [AniList](https://anilist.co). The best release is picked for you (French first,
+  then one that has seeders, then the most volumes) and said in one sentence:
+  *Tomes 1 à 14 en français, 3,6 Go, téléchargement rapide*. Ohara asks the indexers
+  for their *Books* category and drops videos, music, games and adult releases.
+- **The whole series.** A series' sheet says which volumes are missing and fetches
+  them: the cheapest releases per missing volume (a fixed price per torrent favours
+  packs, slow torrents cost more, colour editions count as another series), then
+  drops the packs a bigger one made useless. A followed series is kept complete, at
+  once and every 12 hours.
 - **Filing.** When a download is done, the volumes go to `<library>/<Series>/` and the
   torrent is removed (no seeding). Volumes already there are left out of a pack.
   `.zip` becomes `.cbz`, `.cbr`/`.cb7` are converted with 7-Zip, a release of plain
-  images becomes one `.cbz` per folder. PDF and EPUB are kept as they are and open in
-  the browser's own viewer.
-- **Reading.** The page opens on the volume you were reading. The reader goes left to
-  right (a click on the right half turns to the next page, on the left half back), one
-  page or two side by side, fitted to the height or the width. It preloads the next
-  pages, offers the next volume at the end and saves the page reached on the server,
-  so another device picks up where you stopped.
-
-The interface is in French.
+  images becomes one `.cbz` per folder. PDF and EPUB open in the browser's viewer.
+- **Reading.** Left to right: a click on the right half turns to the next page, on
+  the left half back. One page or two side by side, fitted to the height or the
+  width; the page reached is saved on the server, so another device picks it up.
+- **French or English.** The flag in the header switches the interface; the choice
+  is kept in the browser.
+- **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,
+  off in Prowlarr, no Books category), ticked or not, and a link to add one in
+  Prowlarr.
 
 ## Run it
 
@@ -55,7 +63,7 @@ You need Docker, a Prowlarr with at least one indexer that files manga under *Bo
 | `OHARA_PROWLARR_URL` | `http://prowlarr:9696` | |
 | `OHARA_PROWLARR_KEY` | | Prowlarr's API key. Without it, Ohara reads it from `OHARA_PROWLARR_CONFIG`. |
 | `OHARA_PROWLARR_CONFIG` | `/config/prowlarr/config.xml` | Prowlarr's `config.xml`, mounted read-only, if you prefer that to the key. |
-| `OHARA_INDEXERS` | `YggReborn,Nyaa.si,Knaben` | The Prowlarr indexers to search, by their name in Prowlarr. |
+| `OHARA_INDEXERS` | `YggReborn,Nyaa.si,Knaben` | The Prowlarr indexers to search until some are ticked in the settings. |
 | `OHARA_TRANSMISSION_URL` | `http://transmission:9091/transmission/rpc` | |
 | `OHARA_TRANSMISSION_USER`, `OHARA_TRANSMISSION_PASSWORD` | | When Transmission asks for a login. |
 | `OHARA_TRANSMISSION_DIR` | `/data/manga/.incoming` | The library's `.incoming` folder as Transmission sees it. |
@@ -92,11 +100,14 @@ The page itself uses `/api/search`, `/api/library`, `/api/grab`, `/api/complete`
 ## Development
 
 Python 3 with only the standard library, plus Pillow for the covers; plain HTML, CSS
-and JavaScript for the pages.
+and JavaScript for the pages: `i18n.js` (the words in French and English),
+`words.js` (what is said and shown, decided from the data), `rotunda.js` (the
+rotunda's geometry and what each bay holds), `library.js` (the page),
+`reader.js` (the reader).
 
 ```bash
 python3 -m unittest test_ohara.py   # the server, without Prowlarr, Transmission or a socket
-node --test tests/                  # the pure parts of the pages
+node --test tests/                  # words.js, rotunda.js, reader.js
 OHARA_MANGA=/tmp/manga python3 ohara.py
 ```
 

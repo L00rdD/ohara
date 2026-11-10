@@ -63,7 +63,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups"):
+    for key in ("downloads", "progress", "series", "lookups", "settings"):
         state.setdefault(key, {})
     return state
 
@@ -90,8 +90,8 @@ def series_entry(state, name):
 
 # ---------- AniList: cover, colour, status and number of volumes of a series ----------
 
-ANILIST_QUERY = """query($s: String) { Page(perPage: 1) { media(search: $s, type: MANGA, sort: SEARCH_MATCH) {
-  id title { romaji english } coverImage { extraLarge large color } volumes status startDate { year } } } }"""
+ANILIST_QUERY = """query($s: String) { Page(perPage: 6) { media(search: $s, type: MANGA, sort: SEARCH_MATCH) {
+  id title { romaji english native } synonyms coverImage { extraLarge large color } volumes status startDate { year } } } }"""
 STATUS = {"RELEASING": "En cours", "FINISHED": "Terminé", "HIATUS": "En pause", "CANCELLED": "Arrêté", "NOT_YET_RELEASED": "À paraître"}
 
 
@@ -101,7 +101,7 @@ def anilist_fetch(name):
     found = http_json(ANILIST, data=body, headers=headers, timeout=15)["data"]["Page"]["media"]
     if not found:
         return {}
-    m = found[0]
+    m = best_match(name, found)
     return {
         "id": m["id"],
         "title": m["title"]["english"] or m["title"]["romaji"],
@@ -111,6 +111,24 @@ def anilist_fetch(name):
         "volumes": m["volumes"],
         "year": (m.get("startDate") or {}).get("year"),
     }
+
+
+def normalised(names):
+    """The names compared, without those that normalise to nothing (Japanese only)."""
+    return [n for n in (norm(x or "") for x in names) if n]
+
+
+def best_match(name, found):
+    """The AniList entry titled like the name, else one with it as a synonym, else
+    one whose title contains it, else AniList's first answer."""
+    want = norm(name)
+    ranks = [
+        [m for m in found if want in normalised(m["title"].values())],
+        [m for m in found if want in normalised(m.get("synonyms") or [])],
+        [m for m in found if any(want in t or t in want for t in normalised(m["title"].values()))],
+        found,
+    ]
+    return next(r for r in ranks if r)[0]
 
 
 def lookup(name):
@@ -152,9 +170,36 @@ def http_json(url, data=None, headers=None, timeout=60):
         return json.load(r)
 
 
+def chosen_indexers():
+    """The indexers to search, by name: those picked in the settings, or else
+    OHARA_INDEXERS."""
+    return load_state()["settings"].get("indexers") or INDEXERS
+
+
 def indexer_ids(key):
     found = http_json(f"{PROWLARR_URL}/api/v1/indexer", headers={"X-Api-Key": key})
-    return [i["id"] for i in found if i["name"] in INDEXERS and i.get("enable")]
+    chosen = chosen_indexers()
+    return [i["id"] for i in found if i["name"] in chosen and i.get("enable")]
+
+
+def indexers():
+    """Every indexer of Prowlarr, whether Prowlarr has it on, whether it is failing,
+    and whether Ohara searches it."""
+    key = prowlarr_key()
+    found = http_json(f"{PROWLARR_URL}/api/v1/indexer", headers={"X-Api-Key": key})
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # set aside by Prowlarr after failures, until disabledTill
+    failing = {s["indexerId"] for s in http_json(f"{PROWLARR_URL}/api/v1/indexerstatus", headers={"X-Api-Key": key}) if (s.get("disabledTill") or "") > now}
+    chosen = chosen_indexers()
+    out = [{"name": i["name"], "on": bool(i.get("enable")), "failing": i["id"] in failing, "chosen": i["name"] in chosen,
+            "books": any(c.get("id", 0) // 1000 == 7 for c in (i.get("capabilities") or {}).get("categories", []))} for i in found]
+    return sorted(out, key=lambda i: (not i["chosen"], i["name"].lower()))
+
+
+def choose_indexers(names):
+    def change(state):
+        state["settings"]["indexers"] = [n for n in names if isinstance(n, str)]
+    update_state(change)
 
 
 def is_manga(result):
@@ -837,6 +882,11 @@ def post_complete(h):
     h.send(200, complete(h.body()["series"]))
 
 
+def post_indexers(h):
+    choose_indexers(h.body()["indexers"])
+    h.send(200, indexers())
+
+
 def post_cancel(h):
     cancel(h.body()["hash"])
     h.send(200, {"ok": True})
@@ -849,9 +899,10 @@ GET_ROUTES = {
     "/api/page": get_page,
     "/api/file": get_file,
     "/api/cover": get_cover,
+    "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/cancel": post_cancel}
 
 
 def main():
