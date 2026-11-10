@@ -123,7 +123,7 @@ const Ohara = (() => {
   function bay(b, i, g) {
     const deg = R.offset(i, rot, g.count);
     const node = el("div", "bay");
-    node.style.setProperty("--a", `${i * R.step(g.count)}deg`);
+    node.style.setProperty("--a", `${R.angle(i, g.count)}deg`);
     const inner = el("div", "bay-in");
     inner.style.setProperty("--lit", R.lit(deg, 0.6).toFixed(2));
     node.append(inner);
@@ -165,7 +165,7 @@ const Ohara = (() => {
     drawRotunda();
   }
   function turnBy(n) {
-    return turnTo(rot - n * R.step(geometry().count));
+    return turnTo(rot + n * R.step(geometry().count));
   }
 
   function wireRotunda() {
@@ -185,7 +185,8 @@ const Ohara = (() => {
         rotunda.setPointerCapture(e.pointerId);
         rotunda.classList.add("dragging");
       }
-      rot = r0 + (e.clientX - x0) * 0.25;
+      // dragging to the left brings the bays on the right to you
+      rot = r0 - (e.clientX - x0) * 0.25;
       $("drum").style.setProperty("--rot", rot + "deg");
     };
     rotunda.onpointerup = () => {

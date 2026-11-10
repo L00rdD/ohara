@@ -15,21 +15,25 @@ const Rotunda = (() => {
     return bw / 2 / Math.tan((Math.PI / count) * (0.55 + curve / 2));
   }
 
+  // Bays go round left to right, the way you read: bay i stands at angle(i), and
+  // turning the rotunda by +step brings the next bay (on the right) to the front.
+  const angle = (i, count) => -i * step(count);
+
   // the bay facing you for a rotation of rot degrees
   function front(rot, count) {
-    return (((Math.round(-rot / step(count)) % count) + count) % count);
+    return (((Math.round(rot / step(count)) % count) + count) % count);
   }
 
   // the rotation that brings bay i to the front, the shortest way from rot
   function rotationFor(i, rot, count) {
-    const target = -i * step(count);
+    const target = i * step(count);
     const turns = Math.round((rot - target) / 360);
     return target + turns * 360;
   }
 
   // how far bay i is from the front, in degrees (-180 to 180)
   function offset(i, rot, count) {
-    return ((((i * step(count) + rot) % 360) + 540) % 360) - 180;
+    return ((((angle(i, count) + rot) % 360) + 540) % 360) - 180;
   }
 
   // how lit a bay is: full in the light, dim on the sides
@@ -128,7 +132,7 @@ const Rotunda = (() => {
     return `hsl(${h}, 38%, 38%)`;
   }
 
-  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, radius, front, rotationFor, offset, lit, visible, places, width, fill, span, wall, bayOf, colour };
+  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, angle, radius, front, rotationFor, offset, lit, visible, places, width, fill, span, wall, bayOf, colour };
 })();
 
 if (typeof module !== "undefined") module.exports = Rotunda;

@@ -14,24 +14,29 @@ test("a tighter trunk has a smaller radius", () => {
   assert.ok(R.radius(300, 20, 0.5) > R.radius(300, 10, 0.5));
 });
 
+test("bays go round left to right", () => {
+  assert.equal(R.angle(0, 8), -0);
+  assert.equal(R.angle(1, 8), -45);
+});
+
 test("the bay facing you", () => {
   assert.equal(R.front(0, 8), 0);
-  assert.equal(R.front(-45, 8), 1);
-  assert.equal(R.front(45, 8), 7);
-  assert.equal(R.front(-360 - 90, 8), 2);
+  assert.equal(R.front(45, 8), 1);
+  assert.equal(R.front(-45, 8), 7);
+  assert.equal(R.front(360 + 90, 8), 2);
 });
 
 test("turning to a bay the short way", () => {
-  assert.equal(R.rotationFor(1, 0, 8), -45);
-  assert.equal(R.rotationFor(7, 0, 8), -315 + 360);
-  assert.equal(R.rotationFor(2, -720, 8), -810);
+  assert.equal(R.rotationFor(1, 0, 8), 45);
+  assert.equal(R.rotationFor(7, 0, 8), -45);
+  assert.equal(R.rotationFor(2, 720, 8), 810);
   assert.equal(R.front(R.rotationFor(5, 1234, 8), 8), 5);
 });
 
 test("how far a bay is from the front, and how lit", () => {
   assert.equal(R.offset(0, 0, 8), 0);
-  assert.equal(R.offset(1, 0, 8), 45);
-  assert.equal(R.offset(7, 0, 8), -45);
+  assert.equal(R.offset(1, 0, 8), -45);
+  assert.equal(R.offset(1, 45, 8), 0);
   assert.equal(R.offset(4, 0, 8), -180);
   assert.equal(R.lit(0, 1), 1);
   assert.ok(R.lit(90, 1) < R.lit(30, 1));
