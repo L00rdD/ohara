@@ -1,0 +1,28 @@
+# Ohara next to Prowlarr and Transmission. Join the network they are on (here the
+# default network of another Compose project called "mediaserver") or put Ohara in
+# the same docker-compose.yml as them.
+services:
+  ohara:
+    build: .
+    container_name: ohara
+    init: true
+    user: "1000:1000"            # the owner of your library folder
+    environment:
+      - TZ=Europe/Paris
+      - OHARA_PROWLARR_URL=http://prowlarr:9696
+      - OHARA_PROWLARR_KEY=      # Prowlarr → Settings → General → API Key
+      - OHARA_TRANSMISSION_URL=http://transmission:9091/transmission/rpc
+      # where Transmission sees the incoming folder (the same disk as /manga)
+      - OHARA_TRANSMISSION_DIR=/data/manga/.incoming
+    volumes:
+      - /path/to/manga:/manga
+    ports:
+      - 8585:8585
+    networks:
+      - mediaserver
+    restart: unless-stopped
+
+networks:
+  mediaserver:
+    name: mediaserver_default
+    external: true
