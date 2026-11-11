@@ -144,7 +144,8 @@ button { font: inherit; color: inherit; }
 .vol.done { filter: saturate(.6) brightness(.8); }
 .vol.fresh::before { content: ""; position: absolute; top: 6px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--lantern); box-shadow: 0 0 8px var(--lantern); }
 /* a ribbon marks a volume started */
-.vol.marked::after { content: ""; position: absolute; z-index: 1; left: 30%; top: -4px; width: 5px; height: 110%; background: var(--ribbon); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 94%, 0 100%); }
+/* it sticks out of the top of the book and stops a third down, clear of the number */
+.vol.marked::after { content: ""; position: absolute; z-index: 1; left: 30%; top: -6px; width: 5px; height: 34%; background: var(--ribbon); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%); }
 .gap { width: calc(var(--bw) / 14); height: 80%; padding: 0; background: none; border: 1px dashed rgba(244,232,204,.35); border-bottom: 0; border-radius: 2px 2px 0 0; cursor: pointer; }
 .gap:hover { border-color: var(--lantern); }
 .gap.run { width: calc(var(--bw) / 7); display: grid; place-items: center; font: italic 600 calc(var(--bw) / 22) var(--display); color: rgba(244,232,204,.55); writing-mode: vertical-rl; }
