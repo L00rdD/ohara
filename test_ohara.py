@@ -499,6 +499,26 @@ class Import(Library):
         self.assertFalse((self.root / ".incoming" / "f1").exists())
         self.assertEqual(list(ohara.load_state()["downloads"]), ["H2"])
 
+    def test_check_downloads_small_first_and_one_failure_holds_nothing_back(self):
+        ohara.save_state({"downloads": {"BIG": {"series": "One Piece", "title": "pack", "folder": "big"},
+                                        "BAD": {"series": "X", "title": "bad", "folder": "bad"},
+                                        "SMALL": {"series": "Jujutsu Kaisen", "title": "t", "folder": "small"}}, "progress": {}})
+        live = [{"hashString": "BIG", "percentDone": 1, "totalSize": 900},
+                {"hashString": "BAD", "percentDone": 1, "totalSize": 5},
+                {"hashString": "SMALL", "percentDone": 1, "totalSize": 10}]
+        filed = []
+
+        def fake_import(source, series):
+            if source.name == "bad":
+                raise OSError("unreadable")
+            filed.append(source.name)
+
+        with mock.patch.object(ohara, "torrents", return_value=live), mock.patch.object(ohara, "rpc"), \
+                mock.patch.object(ohara, "import_download", side_effect=fake_import):
+            ohara.check_downloads()
+        self.assertEqual(filed, ["small", "big"])
+        self.assertEqual(list(ohara.load_state()["downloads"]), ["BAD"])
+
     def test_watch_survives_errors(self):
         with mock.patch.object(ohara, "check_downloads", side_effect=OSError("down")), \
                 mock.patch.object(ohara.time, "sleep", side_effect=StopIteration), self.assertRaises(StopIteration):

@@ -410,7 +410,7 @@ def cancel(torrent_hash):
 def torrents(hashes):
     if not hashes:
         return []
-    fields = ["hashString", "percentDone", "status", "error", "errorString", "rateDownload", "eta"]
+    fields = ["hashString", "percentDone", "status", "error", "errorString", "rateDownload", "eta", "totalSize"]
     return rpc("torrent-get", {"ids": hashes, "fields": fields}).get("torrents", [])
 
 
@@ -513,21 +513,28 @@ def check_downloads():
     """Files the finished downloads and forgets them, and gives up on the soundtracks
     that never start. Runs every 30 s."""
     downloads = load_state()["downloads"]
-    for t in torrents(list(downloads)):
+    # the small ones first, so that a big pack does not keep them waiting
+    for t in sorted(torrents(list(downloads)), key=lambda t: t.get("totalSize", 0)):
         d = downloads.get(t["hashString"])
         if d and stalled(d, t, time.time()):
             give_up_music(t["hashString"], d)
-            continue
-        if not d or t["percentDone"] < 1:
-            continue
-        source = INCOMING / d["folder"]
-        if d.get("kind") == "ost":
-            import_music(source, d["series"])
-        else:
-            import_download(source, d["series"])
-        rpc("torrent-remove", {"ids": [t["hashString"]], "delete-local-data": True})
-        shutil.rmtree(source, ignore_errors=True)
-        update_state(lambda s, h=t["hashString"]: s["downloads"].pop(h, None))
+        elif d and t["percentDone"] >= 1:
+            try:
+                file_download(t["hashString"], d)
+            except Exception as e:  # one bad download must not hold the others back
+                print("file:", d["title"], e, flush=True)
+
+
+def file_download(torrent_hash, d):
+    """Files one finished download, then drops its torrent and its folder."""
+    source = INCOMING / d["folder"]
+    if d.get("kind") == "ost":
+        import_music(source, d["series"])
+    else:
+        import_download(source, d["series"])
+    rpc("torrent-remove", {"ids": [torrent_hash], "delete-local-data": True})
+    shutil.rmtree(source, ignore_errors=True)
+    update_state(lambda s: s["downloads"].pop(torrent_hash, None))
 
 
 # ---------- following: new volumes of a series, fetched by themselves ----------
