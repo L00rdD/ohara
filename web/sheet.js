@@ -143,16 +143,24 @@ const Sheet = (() => {
   }
 
   // while the server fetches or receives an image: what it is doing, then its error if any
-  async function keeping(said, work) {
+  // what became of the last image sent or fetched, said on the sheet until it is closed
+  let busy = 0;
+  let notice = null;
+  async function keeping(s, said, work) {
+    busy++;
     said.className = "note";
     said.textContent = W().decorKeeping;
     try {
       await work();
-      load();
+      notice = { series: s.name, cls: "done-note", text: W().decorKept };
     } catch (err) {
-      said.className = "error";
-      said.textContent = W().decorErrors[err.message] || err.message;
+      notice = { series: s.name, cls: "error", text: W().decorErrors[err.message] || err.message };
+    } finally {
+      busy--;
     }
+    said.className = notice.cls;
+    said.textContent = notice.text;
+    load();
   }
 
   // an image of one's own, sent from the phone or the computer
@@ -161,7 +169,7 @@ const Sheet = (() => {
     file.type = "file";
     file.accept = "image/*";
     file.hidden = true;
-    file.onchange = () => file.files[0] && keeping(said, async () => {
+    file.onchange = () => file.files[0] && keeping(s, said, async () => {
       const r = await fetch("/api/decor/image?series=" + encodeURIComponent(s.name), { method: "POST", body: file.files[0] });
       if (!r.ok) throw new Error((await r.json()).error);
     });
@@ -182,7 +190,7 @@ const Sheet = (() => {
     link.hidden = true;
     link.onsubmit = (e) => {
       e.preventDefault();
-      keeping(said, () => api("/api/decor", { series: s.name, decor: "url:" + input.value.trim() }));
+      keeping(s, said, () => api("/api/decor", { series: s.name, decor: "url:" + input.value.trim() }));
     };
     const open = button(W().decorLink, "button", () => {
       open.hidden = true;
@@ -197,7 +205,7 @@ const Sheet = (() => {
     const box = el("div", "decor-box");
     const picks = el("div", "decor-picks");
     picks.append(...decorChoices(s).map((d) => decorSwatch(s, d)));
-    const said = el("p", "note");
+    const said = notice && notice.series === s.name ? el("p", notice.cls, notice.text) : el("p", "note");
     const [send, file] = decorUpload(s, said);
     const [open, link] = decorLink(s, said);
     const acts = el("div", "actions");
@@ -223,6 +231,7 @@ const Sheet = (() => {
   }
 
   function draw(s) {
+    drawn = JSON.stringify(s);
     const sheet = $("series");
     const v = nextToRead(s);
     const read = el("a", "button main", readLabel(v));
@@ -246,14 +255,22 @@ const Sheet = (() => {
 
   function open(s) {
     shown = s.name;
+    notice = null;
     draw(s);
   }
 
   // after the library reloads, the sheet shows the series as it is now
+  // After the library reloads (every few seconds while something downloads), the
+  // sheet is drawn again only when its series changed, and never while you are on it:
+  // typing a link, choosing a photo, an image on its way. It keeps where it was scrolled.
+  let drawn = "";
   function refresh(series) {
     if (!shown || $("series").hidden) return;
     const s = series.find((x) => x.name === shown);
-    if (s) draw(s);
+    if (!s || JSON.stringify(s) === drawn || busy || $("series").contains(document.activeElement) && document.activeElement.matches("input")) return;
+    const at = $("series").scrollTop;
+    draw(s);
+    $("series").scrollTop = at;
   }
 
   return { init: (context) => (ctx = context), open, refresh };

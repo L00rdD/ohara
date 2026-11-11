@@ -989,12 +989,10 @@ class Follow(Library):
         self.assertFalse(ohara.follows_due())
         with mock.patch.object(ohara, "check_downloads") as downloads, mock.patch.object(ohara, "check_follows") as follows, \
                 mock.patch.object(ohara, "read_spines") as spines, mock.patch.object(ohara, "brook_pass") as brook, \
-                mock.patch.object(ohara, "chapters_pass") as wiki, mock.patch.object(ohara, "examine_due") as doctor, \
-                mock.patch.object(ohara, "backup_state") as backup:
+                mock.patch.object(ohara, "chapters_pass") as wiki, mock.patch.object(ohara, "backup_state") as backup:
             ohara.tick()
         backup.assert_called_once()
         wiki.assert_called_once()
-        doctor.assert_called_once()
         spines.assert_called_once()
         brook.assert_called_once()
         downloads.assert_called_once()
@@ -1707,7 +1705,7 @@ class Main(Library):
     def test_main_starts_the_watch_and_the_server(self):
         with mock.patch.object(ohara.threading, "Thread") as thread, mock.patch.object(ohara, "ThreadingHTTPServer") as server:
             ohara.main()
-        self.assertEqual(thread.return_value.start.call_count, 3)
+        self.assertEqual(thread.return_value.start.call_count, 4)
         server.return_value.serve_forever.assert_called_once()
         self.assertTrue((self.root / ".incoming").is_dir())
 

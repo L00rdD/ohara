@@ -10,11 +10,12 @@ const Doctor = (() => {
 
   // the ailments as they are now, and the 🩺's count
   function show(list) {
+    const same = JSON.stringify(list) === JSON.stringify(known);
     known = list;
     const count = $("ailments-count");
     count.textContent = list.length || "";
     $("open-ailments").classList.toggle("quiet", !list.length);
-    if (!$("ailments").hidden) draw();
+    if (!$("ailments").hidden && !same) draw(); // not drawn again for nothing: it would jump
   }
 
   const refresh = (fresh = false) => api("/api/ailments" + (fresh ? "?fresh=1" : "")).then(show, () => {});

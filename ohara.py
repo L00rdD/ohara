@@ -705,7 +705,6 @@ def tick():
     read_spines()
     brook_pass()
     chapters_pass()
-    examine_due()
     if follows_due():
         check_follows()
 
@@ -1274,6 +1273,16 @@ def examine_due():
         ailments(fresh=True)
 
 
+def doctor_loop():
+    """Chopper on his own round, not waiting behind the downloads and Brook's searches."""
+    while True:
+        try:
+            examine_due()
+        except Exception as e:
+            print("chopper:", e, flush=True)
+        time.sleep(30)
+
+
 def treat(aid, index):
     """Runs a remedy chosen, then examines the library again."""
     done = chopper.apply(ailments(fresh=True), aid, index, sys.modules[__name__])
@@ -1591,6 +1600,13 @@ class Handler(BaseHTTPRequestHandler):
     timeout = 60
     disable_nagle_algorithm = True  # a page's headers and body go out without waiting
 
+    def handle(self):
+        """A phone letting go of a connection kept open is no error to report."""
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+
     def log_message(self, *args):
         pass
 
@@ -1835,6 +1851,7 @@ def main():
     threading.Thread(target=refresh_meta, daemon=True).start()
     threading.Thread(target=watch, daemon=True).start()
     threading.Thread(target=franky_loop, daemon=True).start()
+    threading.Thread(target=doctor_loop, daemon=True).start()
     print(f"Ohara on port {PORT}, library in {MANGA}", flush=True)
     ThreadingHTTPServer(("", PORT), Handler).serve_forever()
 
