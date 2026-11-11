@@ -267,3 +267,9 @@ test("the lectern moves on to the next volume once one is finished", () => {
   const allDone = [{ name: "S", meta: {}, volumes: [vs[0]] }];
   assert.equal(Ohara.lecternVolume(last, allDone).id, "S/1");
 });
+
+test("what the card of a place selected on a shelf offers", () => {
+  assert.deepEqual(Ohara.selectionActions({ vol: { done: false, pages: 3 } }), ["open", "markRead", "sheet"]);
+  assert.deepEqual(Ohara.selectionActions({ vol: { done: true } }), ["open", "markUnread", "sheet"]);
+  assert.deepEqual(Ohara.selectionActions({ gap: 4 }), ["sheet"]);
+});

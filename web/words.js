@@ -197,6 +197,14 @@ const Words = (() => {
     return { title: `${series.name}, ${W().tomes(a, b).toLowerCase()}`, state: W().toGet };
   }
 
+  // what the card of a place selected on a shelf offers: a volume can be read, marked
+  // read (or back to unread when it is read) and lead to its series' sheet; a missing
+  // tome only to the sheet, where it can be fetched
+  function selectionActions(place) {
+    if (!place.vol) return ["sheet"];
+    return ["open", place.vol.done ? "markUnread" : "markRead", "sheet"];
+  }
+
   // the lantern's glass filled from y 34 (empty) up to y 10 (full); never quite empty while it burns
   function lanternFill(downloads) {
     return 34 - 24 * (downloads.length ? Math.max(0.15, lanternLevel(downloads)) : 0);
@@ -228,7 +236,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

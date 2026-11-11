@@ -163,6 +163,12 @@ button { font: inherit; color: inherit; }
   padding: 7px 18px 8px; border-radius: 3px; text-align: center; color: var(--ink); background: var(--paper); box-shadow: 0 10px 24px rgba(0,0,0,.5); pointer-events: none; }
 .selection b { display: block; font: 600 18px/1.15 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .selection small { color: var(--ink-soft); font-size: 12px; }
+.selection .picks-row { display: none; }
+/* once touched, the card stays and says what can be done */
+.selection.pinned { pointer-events: auto; padding-bottom: 12px; }
+.selection.pinned .picks-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+.selection .button { padding: 8px 14px; font-size: 14px; background: transparent; color: var(--ink); border-color: rgba(58,38,20,.35); }
+.selection .button.main { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
 /* ---------- sheets: a series, the settings ---------- */
 .sheet { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; max-height: 82vh; overflow: auto; padding: 26px var(--pad) 40px; border-radius: 22px 22px 0 0;

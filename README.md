@@ -41,7 +41,9 @@ Tree of Knowledge.
   ribbon; a plaque says how much of its series is read. A series' sheet says how many
   volumes are read, started and still to read, with *Tout marquer comme lu* and *Tout
   remettre à zéro* (touched twice), and each volume's ⋯ menu marks it read, reads up
-  to it (handy for a series already read on paper) or puts it back to unread.
+  to it (handy for a series already read on paper) or puts it back to unread. On the
+  shelves, touching a volume pins a card under the lectern: read it, mark it read (or
+  back to unread), or open its series' sheet; touching it again opens it.
 - **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda,
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.

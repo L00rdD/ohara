@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -44,35 +44,56 @@ const Ohara = (() => {
   }
 
   // ---- what is selected on a shelf, said under the lectern ----
-  // With a mouse, hovering selects and a click opens; on a touch screen the first
-  // touch selects and the second opens.
+  // With a mouse, hovering says what is under it. A click or a touch selects: the card
+  // under the lectern then says what it is and what can be done with it (read it, mark
+  // it read or unread, its series' sheet); a second one on the same place opens it, a
+  // click anywhere else lets it go.
   function selection() {
-    let pointer = "mouse";
-    let selected = null;
-    function select(key, place, series) {
-      selected = key;
+    const card = $("selection");
+    let pinned = null;
+    function say(place, series) {
       const text = selectionText(place, series);
-      $("selection").querySelector("b").textContent = text.title;
-      $("selection").querySelector("small").textContent = pointer === "mouse" ? text.state : `${text.state} · ${W().tapAgain}`;
-      $("selection").hidden = false;
+      card.querySelector("b").textContent = text.title;
+      card.querySelector("small").textContent = text.state;
+      card.hidden = false;
     }
-    function unselect(key) {
-      if (selected !== key) return;
-      selected = null;
-      $("selection").hidden = true;
+    function pin(key, place, series, open) {
+      pinned = key;
+      say(place, series);
+      card.querySelector(".picks-row").replaceChildren(...selectionActions(place).map((a) => pick(a, place, series, open)));
+      card.classList.add("pinned");
     }
-    // wires a place on a shelf: hover or first touch selects, then open()
+    function unpin() {
+      pinned = null;
+      card.classList.remove("pinned");
+      card.hidden = true;
+    }
+    function pick(action, place, series, open) {
+      const v = place.vol;
+      const what = {
+        open: [v && readLabel(v), "button main", open],
+        markRead: [W().markRead, "button", () => markVolume(v, true)],
+        markUnread: [W().markUnread, "button", () => markVolume(v, false)],
+        sheet: [W().seriesSheet, "button", () => Sheet.open(series)],
+      }[action];
+      return button(what[0], what[1], () => {
+        unpin();
+        what[2]();
+      });
+    }
+    // wires a place on a shelf: hover tells, a first click or touch selects, a second opens
     function selectable(node, key, place, series, open) {
-      node.onpointerenter = (e) => e.pointerType === "mouse" && select(key, place, series);
-      node.onpointerleave = (e) => e.pointerType === "mouse" && unselect(key);
+      node.onpointerenter = (e) => e.pointerType === "mouse" && !pinned && say(place, series);
+      node.onpointerleave = (e) => e.pointerType === "mouse" && !pinned && (card.hidden = true);
       node.onclick = (e) => {
         e.stopPropagation();
-        if (pointer !== "mouse" && selected !== key) return select(key, place, series);
+        if (pinned !== key) return pin(key, place, series, open);
+        unpin();
         open();
       };
       return node;
     }
-    addEventListener("pointerdown", (e) => (pointer = e.pointerType), true);
+    document.addEventListener("click", (e) => pinned && !card.contains(e.target) && unpin());
     return selectable;
   }
   const selectable = selection();
@@ -267,6 +288,10 @@ const Ohara = (() => {
     const g = geometry();
     if (R.front(rot, g.count) !== i) return turnTo(R.rotationFor(i, rot, g.count));
     Sheet.open(s);
+  }
+  async function markVolume(v, read) {
+    await api("/api/read", { vols: [v.id], read });
+    load();
   }
   function closeSheet(sheet) {
     sheet.hidden = true;
