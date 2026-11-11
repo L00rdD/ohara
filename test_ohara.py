@@ -963,6 +963,9 @@ class BrookPicks(unittest.TestCase):
         import brook
         self.assertEqual(brook.album_of("Season 1/01 - a.mp3"), "Season 1")
         self.assertEqual(brook.album_of("01 - a.mp3"), "")
+        self.assertEqual(brook.album_name("[261028] ONE PIECE Original Soundtrack ELBAPH part 1 [FLAC]"), "ONE PIECE Original Soundtrack ELBAPH part 1")
+        self.assertEqual(brook.album_name("Season 1"), "Season 1")
+        self.assertEqual(brook.album_name("[FLAC]"), "[FLAC]")
 
 
 class Brook(Library):

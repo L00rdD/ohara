@@ -838,7 +838,7 @@ def albums(series):
     for name, tracks in found.items():
         folder = root / name if name else root
         art = next((a for a in folder.glob("cover.*") if a.suffix.lower() in brook.ART), None)
-        out.append({"name": name or series, "art": art.relative_to(MUSIC).as_posix() if art else None, "tracks": tracks})
+        out.append({"name": brook.album_name(name) if name else series, "art": art.relative_to(MUSIC).as_posix() if art else None, "tracks": tracks})
     return out
 
 

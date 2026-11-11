@@ -143,6 +143,13 @@ def track_title(path, head):
     return clean_title(Path(path).stem)
 
 
+def album_name(folder):
+    """An album's name to show: the release's tags in brackets left out
+    ("[261028] ONE PIECE Original Soundtrack ELBAPH part 1 [FLAC]")."""
+    shown = re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]|\{[^}]*\}", " ", folder)).strip(" -_")
+    return shown or folder
+
+
 def album_of(relative):
     """The album of a track from its path under the series' music folder: its first
     folder, or the series' own folder for loose tracks."""
