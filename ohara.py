@@ -1133,6 +1133,15 @@ def sized_dir(path, w):
     return STATE_DIR / "pages" / f"{hashlib.sha1(volume_id(path).encode()).hexdigest()}-{w}"
 
 
+def looks_grey(img):
+    """Black and white, even when kept in colour (most scans are): no dot of a small
+    copy strays far from grey."""
+    if img.mode in ("1", "L", "LA"):
+        return True
+    dots = img.convert("RGB").resize((40, 60)).tobytes()
+    return all(max(dots[i:i + 3]) - min(dots[i:i + 3]) < 28 for i in range(0, len(dots), 3))
+
+
 def size_page(path, n, w):
     """Page n at most w pixels wide: the JPEG kept, made now if need be; None when the
     page is hardly wider, to be sent as it is."""
@@ -1148,10 +1157,10 @@ def size_page(path, n, w):
         same.touch()
         return None
     img.draft(img.mode, (w, img.height * w // img.width))
-    img = img.convert("L" if img.mode in ("1", "L", "LA") else "RGB")
+    img = img.convert("L" if looks_grey(img) else "RGB")
     img.thumbnail((w, img.height))
     tmp = folder / f"{n}.{threading.get_ident()}.tmp"
-    img.save(tmp, "JPEG", quality=82)
+    img.save(tmp, "JPEG", quality=78)
     tmp.replace(out)
     return out
 

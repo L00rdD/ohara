@@ -620,14 +620,16 @@ class Reading(Library):
         path = self.root / "Manga" / "Manga T01.cbz"
         path.parent.mkdir(parents=True)
         with zipfile.ZipFile(path, "w") as z:
-            for name, size, mode in (("1.jpg", (3000, 2000), "L"), ("2.png", (900, 1300), "RGB")):
+            for name, size, colour in (("1.jpg", (3000, 2000), (128, 130, 126)), ("2.png", (900, 1300), "red"), ("3.jpg", (2000, 3000), (200, 40, 40))):
                 b = io.BytesIO()
-                Image.new(mode, size, 128).save(b, "JPEG" if name.endswith("jpg") else "PNG")
+                Image.new("RGB", size, colour).save(b, "JPEG" if name.endswith("jpg") else "PNG")
                 z.writestr(name, b.getvalue())
         made = ohara.size_page(path, 0, 1200)
         img = Image.open(made)
         self.assertEqual((img.size, img.mode), ((1200, 800), "L"))
         self.assertIsNone(ohara.size_page(path, 1, 800))  # hardly wider: as it is
+        self.assertEqual(Image.open(ohara.size_page(path, 2, 800)).mode, "RGB")  # a page in colour
+        self.assertTrue(ohara.looks_grey(Image.new("1", (4, 4))))
         with mock.patch.object(ohara, "page_bytes", side_effect=AssertionError("not again")):
             self.assertEqual(ohara.size_page(path, 0, 1200), made)
             self.assertIsNone(ohara.size_page(path, 1, 800))
