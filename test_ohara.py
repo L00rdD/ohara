@@ -53,6 +53,7 @@ class Library(unittest.TestCase):
         ohara.found_releases.clear()
         ohara.pages_cache.clear()
         ohara.page_memory.clear()
+        ohara.torrents_seen.clear()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -682,6 +683,7 @@ class Reading(Library):
 
     def test_the_pages_used_longest_ago_leave_memory(self):
         ohara.page_memory.clear()
+        ohara.torrents_seen.clear()
         with mock.patch.object(ohara, "PAGES_RAM", 10):
             ohara.remember("a", b"1234")
             ohara.remember("b", b"1234")
@@ -690,6 +692,7 @@ class Reading(Library):
         self.assertEqual(list(ohara.page_memory), ["a", "c"])
         self.assertIsNone(ohara.remembered("b"))
         ohara.page_memory.clear()
+        ohara.torrents_seen.clear()
 
     def test_a_volume_is_made_ahead_from_the_page_read(self):
         path = self.root / "Naruto" / "Naruto T01.cbz"
@@ -1318,6 +1321,18 @@ class Chapters(Library):
         with mock.patch.object(ohara.chapters, "chapters", side_effect=OSError("away")):
             ohara.chapters_pass()  # said, and tried again next pass
         self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
+
+
+class StuckTransmission(Library):
+    def test_the_library_does_not_wait_on_a_stuck_transmission(self):
+        ohara.torrents_seen.clear()
+        known = {"hashString": "H", "percentDone": 0.5}
+        with mock.patch.object(ohara, "rpc", return_value={"torrents": [known]}) as rpc:
+            self.assertEqual(ohara.safe_torrents(["H"]), [known])
+        self.assertEqual(rpc.call_args.args[2], ohara.TORRENTS_WAIT)
+        with mock.patch.object(ohara, "rpc", side_effect=TimeoutError("stuck")):
+            self.assertEqual(ohara.safe_torrents(["H", "unseen"]), [known])  # what it said last
+        self.assertEqual(ohara.torrents([]), [])
 
 
 class Backups(Library):

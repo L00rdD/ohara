@@ -339,12 +339,12 @@ def owned_name(releases, meta, have):
 session = {"id": ""}
 
 
-def rpc(method, arguments):
+def rpc(method, arguments, timeout=30):
     body = json.dumps({"method": method, "arguments": arguments}).encode()
     for _ in range(2):
         req = urllib.request.Request(TRANSMISSION_URL, data=body, headers=transmission_headers())
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 answer = json.load(r)
         except urllib.error.HTTPError as e:
             if e.code != 409:
@@ -431,11 +431,11 @@ def cancel(torrent_hash):
     update_state(lambda s: s["downloads"].pop(torrent_hash, None))
 
 
-def torrents(hashes):
+def torrents(hashes, timeout=30):
     if not hashes:
         return []
     fields = ["hashString", "percentDone", "status", "error", "errorString", "rateDownload", "eta", "totalSize"]
-    return rpc("torrent-get", {"ids": hashes, "fields": fields}).get("torrents", [])
+    return rpc("torrent-get", {"ids": hashes, "fields": fields}, timeout).get("torrents", [])
 
 
 # ---------- import: files a finished download into its series folder ----------
@@ -1215,11 +1215,20 @@ def library():
     return {"series": series, "downloads": downloads, "last": last_read(series)}
 
 
+TORRENTS_WAIT = 4  # seconds the library waits for Transmission before saying what it knew
+torrents_seen = {}
+
+
 def safe_torrents(hashes):
+    """How the downloads are going, for the page: Transmission's answer, or when it does
+    not answer in TORRENTS_WAIT (stuck, restarting), what it said last, so that the
+    library never waits on it."""
     try:
-        return torrents(hashes)
+        found = torrents(hashes, TORRENTS_WAIT)
     except Exception:
-        return []
+        return [torrents_seen[h] for h in hashes if h in torrents_seen]
+    torrents_seen.update((t["hashString"], t) for t in found)
+    return found
 
 
 def download_info(torrent_hash, d, t):

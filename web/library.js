@@ -445,12 +445,35 @@ const Ohara = (() => {
   }
 
   let timer = null;
+  // The library as the page saw it last, kept in the browser: coming back from the
+  // reader, the shelves are drawn at once from it, then from the server's answer.
+  const KEPT = "ohara-library";
+  let answered = false; // the server's library came: only it is kept
+  function fromKept() {
+    const kept = Words.keptLibrary(localStorage.getItem(KEPT));
+    if (!kept) return; // nothing kept: the server's answer comes anyway
+    lib = kept;
+    spineStyle = kept.spineStyle || spineStyle;
+    ribbon = kept.ribbon ?? ribbon;
+    draw();
+  }
+  function keep() {
+    if (!answered) return;
+    try {
+      localStorage.setItem(KEPT, JSON.stringify({ ...lib, spineStyle, ribbon }));
+    } catch {
+      // the browser's room is full: nothing kept, nothing lost
+    }
+  }
+
   async function load() {
     try {
       lib = await api("/api/library");
     } catch {
       return;
     }
+    answered = true;
+    keep();
     draw();
     Sheet.refresh(lib.series);
     Doctor.refresh();
@@ -495,6 +518,7 @@ const Ohara = (() => {
     api("/api/settings").then((st) => {
       spineStyle = st.spines;
       ribbon = st.ribbon;
+      keep();
       drawRotunda();
       drawLectern();
     }, () => {});
@@ -506,6 +530,7 @@ const Ohara = (() => {
     addEventListener("keydown", keys);
     addEventListener("resize", draw);
     motes();
+    fromKept();
     load();
   }
 

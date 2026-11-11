@@ -130,7 +130,7 @@ class Cures(unittest.TestCase):
         self.calls = []
         self.known = []  # the torrents Transmission has
 
-        def rpc(method, arguments):
+        def rpc(method, arguments, timeout=30):
             self.calls.append((method, arguments))
             return {"torrents": [{"hashString": h} for h in self.known]} if method == "torrent-get" else {}
         p = mock.patch.object(ohara, "rpc", side_effect=rpc)

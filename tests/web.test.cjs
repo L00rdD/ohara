@@ -342,3 +342,10 @@ test("a series' sheet drawn again only when it changed, and not while you are on
   assert.equal(Ohara.redrawn({ ...s, follow: true }, JSON.stringify(s), 0, true), false); // typing
   assert.equal(Ohara.redrawn(undefined, "", 0, false), false);
 });
+
+test("the library kept in the browser", () => {
+  assert.deepEqual(Ohara.keptLibrary('{"series": [{"name": "S"}], "last": null}'), { series: [{ name: "S" }], last: null });
+  assert.equal(Ohara.keptLibrary(null), null);
+  assert.equal(Ohara.keptLibrary("{not json"), null);
+  assert.equal(Ohara.keptLibrary('{"series": 3}'), null);
+});

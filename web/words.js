@@ -247,6 +247,16 @@ const Words = (() => {
     return l.done ? W().lighterProgress(l.done, l.total, size(l.saved)) : W().lighterNone(l.total);
   }
 
+  // the library kept in the browser, or null when there is none or it cannot be read
+  function keptLibrary(text) {
+    try {
+      const kept = JSON.parse(text);
+      return kept && Array.isArray(kept.series) ? kept : null;
+    } catch {
+      return null;
+    }
+  }
+
   // the ailments by series, in the order they come: [[series ("" for the whole
   // library), [ailment…]]…]
   function bySeries(list) {
@@ -300,7 +310,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn, keptLibrary };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;
