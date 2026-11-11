@@ -54,13 +54,23 @@ def size_penalty(size):
     return 0
 
 
-WEAK = 3  # fewer seeders than this and a download may never start
+WEAK, STRONG = 3, 10  # under WEAK seeders a download may never start; STRONG is safe
+
+
+def health(seeders):
+    """0 for a well-seeded release, 1 for a fair one, 2 for a weak one, 3 for none.
+    General indexers often show more seeders than there are, so a release must be
+    clearly seeded before its size or format count."""
+    if seeders >= STRONG:
+        return 0
+    if seeders >= WEAK:
+        return 1
+    return 2 if seeders else 3
 
 
 def best_first(r):
-    """With seeders, then with enough of them; then the right size, the lighter
-    format, the most seeders."""
-    return (r["seeders"] == 0, r["seeders"] < WEAK, round(size_penalty(r["size"]) * 4), audio_format(r["title"]), -r["seeders"])
+    """The best seeded first; then the right size, the lighter format, the most seeders."""
+    return (health(r["seeders"]), round(size_penalty(r["size"]) * 4), audio_format(r["title"]), -r["seeders"])
 
 
 def clean_title(stem):

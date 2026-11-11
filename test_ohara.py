@@ -924,6 +924,10 @@ class BrookPicks(unittest.TestCase):
 
     def test_best_first(self):
         import brook
+        self.assertEqual([brook.health(n) for n in (25, 10, 9, 3, 2, 1, 0)], [0, 0, 1, 1, 2, 2, 3])
+        lime = self.rel("OP OST (Mp3 320kbps)", seeders=3, size=430e6)
+        nyaa = self.rel("OP Original Soundtrack ELBAPH [FLAC]", seeders=18, size=340e6)
+        self.assertEqual(sorted([lime, nyaa], key=brook.best_first), [nyaa, lime])
         found = [
             self.rel("A OST Collection", seeders=11, size=4.9e9),
             self.rel("A OST [FLAC]", seeders=3, size=900e6),
@@ -932,7 +936,7 @@ class BrookPicks(unittest.TestCase):
             self.rel("A Soundtrack", seeders=9, size=700e6),
         ]
         self.assertEqual([r["title"] for r in sorted(found, key=brook.best_first)],
-                         ["A Soundtrack", "A OST [FLAC]", "A OST Collection", "A OST (MP3 320)", "A OST mp3"])
+                         ["A OST Collection", "A Soundtrack", "A OST [FLAC]", "A OST (MP3 320)", "A OST mp3"])
         self.assertEqual(brook.size_penalty(1e9), 0)
         self.assertGreater(brook.size_penalty(10e9), brook.size_penalty(5e9))
 
