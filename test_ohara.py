@@ -481,6 +481,16 @@ class Import(Library):
         self.assertEqual(ohara.import_download(src, "Frieren"), 2)
         with zipfile.ZipFile(self.root / "Frieren" / "Tome 1.cbz") as z:
             self.assertEqual(z.namelist(), ["1.jpg", "2.jpg", "10.jpg"])
+        self.assertEqual(sorted(p.name for p in (self.root / "Frieren").iterdir()), ["Tome 1.cbz", "Tome 2.cbz"])  # no part left
+
+    def test_a_volume_cut_short_is_not_taken_for_a_whole_one(self):
+        src = self.root / ".incoming" / "f4" / "Tome 1"
+        src.mkdir(parents=True)
+        (src / "1.jpg").write_bytes(b"j")
+        with mock.patch.object(ohara.zipfile.ZipFile, "write", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+            ohara.zip_folder(src, self.root / "Tome 1.cbz")
+        self.assertFalse((self.root / "Tome 1.cbz").exists())
+        self.assertNotIn(1, ohara.owned_numbers(self.root))
 
     def test_images_at_the_top(self):
         src = self.root / ".incoming" / "Oneshot"

@@ -418,11 +418,15 @@ def torrents(hashes):
 # ---------- import: files a finished download into its series folder ----------
 
 def zip_folder(folder, target):
-    """Turns a folder of images into one .cbz."""
+    """Turns a folder of images into one .cbz. It is written under a hidden name and
+    only then given its own, so a volume cut short (Ohara stopped while it was being
+    made) is never taken for a whole one."""
     images = sorted((p for p in folder.rglob("*") if IMAGE.search(p.name)), key=lambda p: natural(str(p)))
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_STORED) as z:
+    part = target.with_name(f".{target.name}.part")
+    with zipfile.ZipFile(part, "w", zipfile.ZIP_STORED) as z:
         for p in images:
             z.write(p, p.relative_to(folder).as_posix())
+    part.replace(target)
 
 
 def extract(path, out):
@@ -453,7 +457,9 @@ def free_name(folder, name):
 
 
 def owned_numbers(dest):
-    return {volume_number(p.name) for p in dest.iterdir() if p.is_file()} - {None} if dest.exists() else set()
+    """The numbers of the volumes a series has: its readable files, not what is left of
+    one being made."""
+    return {volume_number(p.name) for p in volumes(dest)} - {None} if dest.exists() else set()
 
 
 def import_download(source, series):
