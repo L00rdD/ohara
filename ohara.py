@@ -1819,9 +1819,26 @@ def post_read(h):
     h.send(200, mark_read([v for v in b.get("vols", []) if isinstance(v, str)], bool(b.get("read"))))
 
 
+def drop(torrent_hash):
+    """Cancels a download from the lantern, remembering its release so that following
+    the series does not take it again (a soundtrack the way Brook gives one up)."""
+    d = load_state()["downloads"].get(torrent_hash)
+    if d and d.get("kind") == "ost":
+        give_up_music(torrent_hash, d)
+    elif d:
+        give_up(torrent_hash)
+    else:
+        cancel(torrent_hash)
+
+
 def post_cancel(h):
-    cancel(h.body()["hash"])
+    drop(h.body()["hash"])
     h.send(200, {"ok": True})
+
+
+def post_another(h):
+    """Gives a download up and looks for its tomes among the other releases."""
+    h.send(200, complete(give_up(h.body()["hash"])))
 
 
 GET_ROUTES = {
@@ -1842,7 +1859,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/another": post_another}
 
 
 def main():

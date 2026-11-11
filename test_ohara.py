@@ -857,7 +857,18 @@ class Http(Reading):
         self.assertIn("image/jpeg", head)
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
-        cancel.assert_called_once_with("H")
+        cancel.assert_called_once_with("H")  # unknown to Ohara: only cancelled
+        ohara.save_state({"downloads": {"P": {"series": "N", "title": "N T01-T09", "folder": "p"}, "O": {"series": "N", "title": "OST", "folder": "o", "kind": "ost"}}})
+        with mock.patch.object(ohara, "rpc"):
+            self.call("POST", "/api/cancel", {"hash": "P"})
+            self.call("POST", "/api/cancel", {"hash": "O"})
+        state = ohara.load_state()
+        self.assertEqual((state["downloads"], state["series"]["N"]["skipped"], state["music"]["N"]["skipped"]), ({}, ["N T01-T09"], ["OST"]))
+        ohara.save_state({"downloads": {"Q": {"series": "N", "title": "N T01-T09 bis", "folder": "q"}}})
+        with mock.patch.object(ohara, "rpc"), mock.patch.object(ohara, "complete", return_value={"sent": [], "nowhere": [3]}) as complete:
+            code, _, payload = self.call("POST", "/api/another", {"hash": "Q"})
+        self.assertEqual((code, json.loads(payload)), (200, {"sent": [], "nowhere": [3]}))
+        complete.assert_called_once_with("N")
 
     def test_errors_become_json(self):
         with mock.patch.object(ohara, "search", side_effect=OSError("prowlarr down")):

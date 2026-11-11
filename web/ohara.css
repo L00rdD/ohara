@@ -69,7 +69,9 @@ button { font: inherit; color: inherit; }
 .dl b { font: 600 17px/1.15 var(--display); }
 .dl > span { color: var(--ink-soft); }
 .dl .bar { grid-column: 1 / -1; }
-.dl button { grid-column: 1 / -1; justify-self: end; background: none; border: 0; color: var(--ink-soft); text-decoration: underline; cursor: pointer; padding: 0; font-size: 12px; }
+.dl-acts { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 14px; }
+.dl-acts small { color: var(--ink-soft); }
+.dl button { background: none; border: 0; color: var(--ink-soft); text-decoration: underline; cursor: pointer; padding: 4px 0; font-size: 13px; }
 .dl .stuck { color: #9b2c1e; }
 .bar { display: block; height: 3px; border-radius: 2px; background: rgba(90,60,30,.18); overflow: hidden; }
 .bar i { display: block; height: 100%; background: #9a6a2e; }
@@ -103,6 +105,8 @@ button { font: inherit; color: inherit; }
 .plaque.blank { visibility: hidden; }
 /* a bay shared by small series: a small plaque over each one's shelf */
 .bay-in.shared .vol { height: 70%; }
+/* no big plaque on a shared bay: its first shelf, and its decor, go up to the top */
+.bay-in.shared { grid-template-rows: repeat(3, minmax(0, 1fr)); }
 .bay-in.shared .ledge.decor { background: linear-gradient(180deg, rgba(26,15,7,.55), rgba(26,15,7,.8)), var(--banner) center / cover no-repeat; }
 .shelf-plaque { position: absolute; z-index: 1; top: 6px; left: 50%; transform: translateX(-50%); max-width: 88%; padding: 3px 12px 4px; border: 0; border-radius: 3px; cursor: pointer;
   background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 30%, #6e4627), color-mix(in srgb, var(--tint) 22%, #4e311b)); box-shadow: inset 0 1px 0 rgba(255,220,170,.25), 0 2px 5px rgba(0,0,0,.4);

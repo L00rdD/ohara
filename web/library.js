@@ -170,7 +170,6 @@ const Ohara = (() => {
   // its decor behind it
   function sharedBay(b, i, inner) {
     inner.classList.add("shared");
-    inner.append(el("span", "plaque blank", "·"));
     b.rows.forEach((row, r) => {
       const s = b.shelves[r];
       const ledge = el("div", "ledge");
@@ -351,7 +350,19 @@ const Ohara = (() => {
       load();
     });
     const what = downloadName(d);
-    row.append(el("b", "", what), el("span", d.state === "error" ? "stuck" : "", downloadState(d)), bar(d.pct), stop);
+    const acts = el("div", "dl-acts");
+    // tomes that do not come: another release of them, the one given up not taken again
+    if (d.kind !== "ost") {
+      const other = button(W().anotherRelease, "", async () => {
+        other.disabled = true;
+        const r = await api("/api/another", { hash: d.hash }).catch((err) => ({ error: err.message }));
+        other.replaceWith(el("small", "", r.error || (r.sent.length ? W().anotherSent(r.sent.length) : W().anotherNone)));
+        load();
+      });
+      acts.append(other);
+    }
+    acts.append(stop);
+    row.append(el("b", "", what), el("span", d.state === "error" ? "stuck" : "", downloadState(d)), bar(d.pct), acts);
     return row;
   }
 

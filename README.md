@@ -99,8 +99,9 @@ Tree of Knowledge.
   family of examinations is a file of its own, `ailments_*.py`.
 - **Kept safe.** Once a day, the state (where you are in each volume, every choice
   made) is copied to `.ohara/backups`, the last 7 days kept. A download that never
-  comes can be given up for another release of the same tomes; Ohara remembers the
-  one given up on and does not take it again.
+  comes can be given up for another release of the same tomes, from the lantern
+  (*Une autre version*) or from Chopper; Ohara remembers the one given up on, and one
+  cancelled, and does not take it again.
 - **French or English.** The flag in the header switches the interface; the choice
   is kept in the browser.
 - **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,
