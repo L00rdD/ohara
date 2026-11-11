@@ -595,6 +595,51 @@ class Reading(Library):
         self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "count": 2, "page": 1, "next": "Naruto/Naruto T04.cbz"})
         self.assertIsNone(ohara.volume_pages("Naruto/Naruto T04.cbz")["next"])
 
+    def test_pages_the_size_of_a_screen(self):
+        from PIL import Image
+        self.assertEqual([ohara.page_width(w) for w in (None, "", "x", -3, 700, 1200, 1201, 2400, 3000)], [0, 0, 0, 0, 800, 1200, 1600, 2400, 0])
+        path = self.root / "Manga" / "Manga T01.cbz"
+        path.parent.mkdir(parents=True)
+        with zipfile.ZipFile(path, "w") as z:
+            for name, size, mode in (("1.jpg", (3000, 2000), "L"), ("2.png", (900, 1300), "RGB")):
+                b = io.BytesIO()
+                Image.new(mode, size, 128).save(b, "JPEG" if name.endswith("jpg") else "PNG")
+                z.writestr(name, b.getvalue())
+        made = ohara.size_page(path, 0, 1200)
+        img = Image.open(made)
+        self.assertEqual((img.size, img.mode), ((1200, 800), "L"))
+        self.assertIsNone(ohara.size_page(path, 1, 800))  # hardly wider: as it is
+        with mock.patch.object(ohara, "page_bytes", side_effect=AssertionError("not again")):
+            self.assertEqual(ohara.size_page(path, 0, 1200), made)
+            self.assertIsNone(ohara.size_page(path, 1, 800))
+
+    def test_a_volume_is_made_ahead_from_the_page_read(self):
+        path = self.root / "Naruto" / "Naruto T01.cbz"
+        done = []
+        with mock.patch.object(ohara, "size_page", side_effect=lambda p, n, w: done.append(n)), \
+                mock.patch.object(ohara.threading, "Thread") as thread:
+            ohara.warm(path, 800, 1)
+            run = thread.call_args.kwargs["target"]
+            run()
+            self.assertEqual(done, [1, 0])
+            ohara.warm(path, 800, 0)  # another volume opened: the first stops
+            done.clear()
+            run()
+            self.assertEqual(done, [])
+        self.assertTrue(ohara.sized_dir(path, 800).is_dir())
+        with mock.patch.object(ohara, "size_page", side_effect=OSError("bad page")), mock.patch.object(ohara.threading, "Thread") as thread:
+            ohara.warm(path, 800, 0)
+            thread.call_args.kwargs["target"]()  # says so and stops
+
+    def test_only_the_volumes_read_last_keep_their_pages(self):
+        ohara.trim_pages()
+        root = ohara.STATE_DIR / "pages"
+        for i in range(4):
+            (root / f"v{i}").mkdir(parents=True)
+            os.utime(root / f"v{i}", (i, i))
+        ohara.trim_pages(keep=2)
+        self.assertEqual(sorted(f.name for f in root.iterdir()), ["v2", "v3"])
+
     def test_cover_is_made_once(self):
         path = self.root / "Naruto" / "Naruto T01.cbz"
         first = ohara.cover(path)
@@ -693,6 +738,22 @@ class Http(Reading):
         self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False})[2]), {"spines": "sobre", "brook": False})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
         ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
+        with mock.patch.object(ohara, "warm") as warm:
+            code, _, payload = self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz&w=1000")
+        self.assertEqual((code, json.loads(payload)["count"]), (200, 2))
+        warm.assert_called_once_with((self.root / "Naruto" / "Naruto T01.cbz").resolve(), 1200, 0)
+        with mock.patch.object(ohara, "warm") as warm:
+            self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz")
+        warm.assert_not_called()
+        sized = self.root / "sized.jpg"
+        sized.write_bytes(b"SMALL")
+        with mock.patch.object(ohara, "size_page", return_value=sized):
+            code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0&w=800")
+        self.assertEqual((code, payload), (200, b"SMALL"))
+        self.assertIn("image/jpeg", head)
+        with mock.patch.object(ohara, "size_page", return_value=None):
+            code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0&w=800")
+        self.assertIn("image/png", head)
         code, head, _ = self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")
         self.assertEqual(code, 200)
         self.assertIn("image/jpeg", head)

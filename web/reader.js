@@ -1,7 +1,9 @@
 // Ohara's reader: one volume, page by page or two pages side by side, left to right.
 // A click on the right half turns to the next page, on the left half back to the
 // previous one. The bars show while the mouse moves, or with the corner button.
-// The page reached is saved on the server, so another device picks it up.
+// The page reached is saved on the server, so another device picks it up. Pages come
+// at the width of the screen and are made ready ahead: a page shows only once it is
+// whole, the one before stays until then.
 const Reader = (() => {
   // ---- pure page arithmetic (tested in node) ----
 
@@ -26,7 +28,17 @@ const Reader = (() => {
   // Where a click lands, from its place across the screen (0 to 1)
   const zone = (x) => (x < 0.5 ? "prev" : "next");
 
-  if (typeof document === "undefined") return { spread, after, before, zone };
+  // The width in pixels a page is shown at: the window's, half of it for two pages
+  const pageWidth = (w, ratio, double) => Math.ceil((w * ratio) / (double ? 2 : 1));
+
+  // The pages to have ready around p: two before, six after the spread shown
+  function around(p, count, double) {
+    const from = Math.max(0, spread(p, count, double)[0] - 2);
+    const to = Math.min(count, after(p, count, double) + 6);
+    return Array.from({ length: to - from }, (_, i) => from + i);
+  }
+
+  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around };
 
   // ---- the page ----
   const $ = (id) => document.getElementById(id);
@@ -40,25 +52,55 @@ const Reader = (() => {
   let page = 0;
   let saveTimer = null;
 
-  const src = (n) => `/api/page?vol=${encodeURIComponent(vid)}&n=${n}`;
+  let width = 0;
+  const src = (n) => `/api/page?vol=${encodeURIComponent(vid)}&n=${n}&w=${width}`;
 
-  function draw() {
+  // the pages loaded, whole, ready to show: those around the page read
+  let ready = new Map();
+  function image(n) {
+    if (!ready.has(n)) {
+      const img = Object.assign(new Image(), { src: src(n), alt: `Page ${n + 1}` });
+      img.whole = img.decode().catch(() => {});
+      ready.set(n, img);
+    }
+    return ready.get(n);
+  }
+  function forget() {
+    ready = new Map();
+    width = pageWidth(innerWidth, devicePixelRatio || 1, settings.double);
+  }
+  function getAhead() {
+    const keep = new Set(around(page, info.count, settings.double));
+    for (const n of ready.keys()) if (!keep.has(n)) ready.delete(n);
+    for (const n of keep) image(n);
+  }
+
+  // the spread is shown once its pages are whole; meanwhile the one before stays, with
+  // a thin line at the top when it takes a while
+  let drawing = 0;
+  async function draw() {
     const stage = $("stage");
-    stage.dataset.fit = settings.fit;
+    const turn = ++drawing;
     const shown = spread(page, info.count, settings.double);
-    stage.replaceChildren(...shown.map((n) => Object.assign(document.createElement("img"), { src: src(n), alt: `Page ${n + 1}` })));
+    const imgs = shown.map(image);
+    const slow = setTimeout(() => stage.classList.add("waiting"), 250);
+    await Promise.all(imgs.map((i) => i.whole));
+    clearTimeout(slow);
+    if (turn !== drawing) return;
+    stage.classList.remove("waiting");
+    stage.dataset.fit = settings.fit;
+    stage.replaceChildren(...imgs);
     stage.scrollTo(0, 0);
+    getAhead();
+  }
+
+  function say() {
+    const shown = spread(page, info.count, settings.double);
     $("count").textContent = `${shown.map((n) => n + 1).join("-")} / ${info.count}`;
     $("slider").value = page + 1;
     const w = I18n.words();
     $("mode").textContent = settings.double ? w.twoPages : w.onePage;
     $("fit").textContent = settings.fit === "height" ? w.fitHeight : w.fitWidth;
-    preload(after(page, info.count, settings.double));
-    save();
-  }
-
-  function preload(from) {
-    for (let n = from; n < Math.min(from + 4, info.count); n++) new Image().src = src(n);
   }
 
   function save(done) {
@@ -72,6 +114,8 @@ const Reader = (() => {
   function go(n) {
     $("end").hidden = true;
     page = Math.max(0, Math.min(n, info.count - 1));
+    say();
+    save();
     draw();
   }
 
@@ -94,7 +138,8 @@ const Reader = (() => {
   // a volume opens in the same page, so the music goes on from one volume to the next
   async function openVolume(id) {
     vid = id;
-    info = await (await fetch("/api/pages?vol=" + encodeURIComponent(vid))).json();
+    forget();
+    info = await (await fetch(`/api/pages?vol=${encodeURIComponent(vid)}&w=${width}`)).json();
     document.title = `${info.series} · ${info.label}`;
     $("title").textContent = document.title;
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
@@ -116,6 +161,7 @@ const Reader = (() => {
   function setting(key, value) {
     settings[key] = value;
     localStorage.setItem("ohara-" + (key === "double" ? "mode" : key), key === "double" ? (value ? "double" : "single") : value);
+    if (key === "double") forget();
     go(page);
   }
 
@@ -147,7 +193,7 @@ const Reader = (() => {
   }
 
   start();
-  return { spread, after, before, zone };
+  return { spread, after, before, zone, pageWidth, around };
 })();
 
 if (typeof module !== "undefined") module.exports = Reader;

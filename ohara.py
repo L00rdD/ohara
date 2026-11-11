@@ -1100,6 +1100,86 @@ def page_bytes(path, n):
         return z.read(names[n]), names[n]
 
 
+# ---------- pages the size of the screen ----------
+# Scans are often far wider than a screen (3000 px, over a megabyte). The reader asks
+# for pages at its width, rounded up to one of WIDTHS; Ohara makes each page once, at
+# most that wide, keeps it in .ohara/pages, and makes those of a volume ahead of the
+# reader as soon as it is opened.
+WIDTHS = (800, 1200, 1600, 2400)
+PAGES_KEPT = 12  # volumes whose pages are kept at the size of a screen
+warming = {"job": None}  # the volume being made ahead; opening another stops it
+
+
+def page_width(w):
+    """The width asked, rounded up to one of WIDTHS; 0 for the pages as they are."""
+    try:
+        w = int(w or 0)
+    except ValueError:
+        return 0
+    return next((x for x in WIDTHS if x >= w), 0) if w > 0 else 0
+
+
+def sized_dir(path, w):
+    return STATE_DIR / "pages" / f"{hashlib.sha1(volume_id(path).encode()).hexdigest()}-{w}"
+
+
+def size_page(path, n, w):
+    """Page n at most w pixels wide: the JPEG kept, made now if need be; None when the
+    page is hardly wider, to be sent as it is."""
+    folder = sized_dir(path, w)
+    out, same = folder / f"{n}.jpg", folder / f"{n}.same"
+    if out.exists() or same.exists():
+        return out if out.exists() else None
+    from PIL import Image
+    data, _ = page_bytes(path, n)
+    img = Image.open(io.BytesIO(data))
+    folder.mkdir(parents=True, exist_ok=True)
+    if img.width <= w * 1.15:
+        same.touch()
+        return None
+    img.draft(img.mode, (w, img.height * w // img.width))
+    img = img.convert("L" if img.mode in ("1", "L", "LA") else "RGB")
+    img.thumbnail((w, img.height))
+    tmp = folder / f"{n}.{threading.get_ident()}.tmp"
+    img.save(tmp, "JPEG", quality=82)
+    tmp.replace(out)
+    return out
+
+
+def trim_pages(keep=PAGES_KEPT):
+    """Only the pages of the volumes read last are kept at the size of a screen."""
+    root = STATE_DIR / "pages"
+    if not root.exists():
+        return
+    folders = sorted(root.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)
+    for f in folders[keep:]:
+        shutil.rmtree(f, ignore_errors=True)
+
+
+def warm(path, w, start):
+    """Makes a volume's pages at width w in the background, from the page the reader is
+    at to the end, then those before; opening another volume stops it."""
+    job = object()
+    warming["job"] = job
+    folder = sized_dir(path, w)
+    folder.mkdir(parents=True, exist_ok=True)
+    os.utime(folder)
+    trim_pages()
+    count = len(pages(path))
+    order = list(range(start, count)) + list(range(min(start, count)))
+
+    def run():
+        for n in order:
+            if warming["job"] is not job:
+                return
+            try:
+                size_page(path, n, w)
+            except Exception as e:
+                print(f"pages {path.name} {n}: {e}", flush=True)
+                return
+    threading.Thread(target=run, daemon=True).start()
+
+
 def cover(path):
     """A small JPEG of a volume's first page, made once and kept in .ohara/covers."""
     out = STATE_DIR / "covers" / (hashlib.sha1(volume_id(path).encode()).hexdigest() + ".jpg")
@@ -1225,8 +1305,24 @@ def get_search(h):
 
 def get_page(h):
     q = h.query()
-    data, name = page_bytes(volume_path(q["vol"]), int(q.get("n", 0)))
-    h.send(200, data, TYPES.get(Path(name).suffix.lower(), "image/jpeg"), {"Cache-Control": "max-age=86400"})
+    path, n, w = volume_path(q["vol"]), int(q.get("n", 0)), page_width(q.get("w"))
+    sized = w and size_page(path, n, w)
+    if sized:
+        data, ctype = sized.read_bytes(), "image/jpeg"
+    else:
+        data, name = page_bytes(path, n)
+        ctype = TYPES.get(Path(name).suffix.lower(), "image/jpeg")
+    h.send(200, data, ctype, {"Cache-Control": "max-age=604800"})
+
+
+def get_pages(h):
+    """A volume to read; with the reader's width, its pages are made ahead."""
+    q = h.query()
+    info = volume_pages(q["vol"])
+    w = page_width(q.get("w"))
+    if w and info["count"]:
+        warm(volume_path(q["vol"]), w, min(info["page"], info["count"] - 1))
+    h.send(200, info)
 
 
 def get_file(h):
@@ -1365,7 +1461,7 @@ def post_cancel(h):
 GET_ROUTES = {
     "/api/search": get_search,
     "/api/library": lambda h: h.send(200, library()),
-    "/api/pages": lambda h: h.send(200, volume_pages(h.query()["vol"])),
+    "/api/pages": get_pages,
     "/api/page": get_page,
     "/api/file": get_file,
     "/api/cover": get_cover,

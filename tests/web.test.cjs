@@ -293,3 +293,16 @@ test("the back of a series' shelves", () => {
   assert.equal(fr(() => Ohara.decorName(s, "url:https://x.org/a.jpg")), "Image du web");
   assert.equal(en(() => Ohara.decorName(s, "none")), "Bare wood");
 });
+
+test("the width a page is asked at", () => {
+  assert.equal(Reader.pageWidth(390, 3, false), 1170);
+  assert.equal(Reader.pageWidth(1440, 2, true), 1440);
+  assert.equal(Reader.pageWidth(1000.5, 1, false), 1001);
+});
+
+test("the pages made ready around the one read", () => {
+  assert.deepEqual(Reader.around(0, 100, false), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(Reader.around(10, 100, false), [8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  assert.deepEqual(Reader.around(10, 100, true), [7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  assert.deepEqual(Reader.around(98, 100, false), [96, 97, 98, 99]);
+});
