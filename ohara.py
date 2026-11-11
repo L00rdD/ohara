@@ -424,10 +424,20 @@ def zip_folder(folder, target):
             z.write(p, p.relative_to(folder).as_posix())
 
 
+def extract(path, out):
+    """Opens an archive into out with 7-Zip, or with bsdtar for the RARs 7-Zip cannot
+    read (Alpine's 7-Zip is built without RAR)."""
+    try:
+        subprocess.run(["7z", "x", "-y", f"-o{out}", str(path)], check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        out.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["bsdtar", "-xf", str(path), "-C", str(out)], check=True, capture_output=True)
+
+
 def unpack_archive(path, target):
-    """A .cbr/.cb7 becomes a .cbz (7-Zip reads them); the original is left behind."""
+    """A .cbr/.cb7 becomes a .cbz (7-Zip or bsdtar reads them); the original is left behind."""
     tmp = path.with_suffix(".unpacked")
-    subprocess.run(["7z", "x", "-y", f"-o{tmp}", str(path)], check=True, capture_output=True)
+    extract(path, tmp)
     zip_folder(tmp, target)
     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -784,7 +794,7 @@ def unpack_audio(source):
     """Opens the archives (.zip, .rar, .7z) of a soundtrack where they are."""
     for p in list(source.rglob("*")):
         if p.suffix.lower() in (".zip", ".rar", ".7z"):
-            subprocess.run(["7z", "x", "-y", f"-o{p.with_suffix('')}", str(p)], check=True, capture_output=True)
+            extract(p, p.with_suffix(""))
 
 
 def import_music(source, series):

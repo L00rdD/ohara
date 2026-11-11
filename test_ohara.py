@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 import urllib.error
@@ -449,6 +450,24 @@ class Import(Library):
 
         with mock.patch("subprocess.run", side_effect=fake_7z):
             self.assertEqual(ohara.import_download(src, "Berserk"), 1)
+        with zipfile.ZipFile(self.root / "Berserk" / "Vol 1.cbz") as z:
+            self.assertEqual(z.namelist(), ["p1.png"])
+
+    def test_cbr_7zip_cannot_read_goes_to_bsdtar(self):
+        src = self.root / ".incoming" / "f4"
+        src.mkdir(parents=True)
+        (src / "Vol 1.cbr").write_bytes(b"rar")
+        tools = []
+
+        def fake_run(cmd, check, capture_output):
+            tools.append(cmd[0])
+            if cmd[0] == "7z":
+                raise subprocess.CalledProcessError(2, cmd)
+            (Path(cmd[4]) / "p1.png").write_bytes(png())
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            self.assertEqual(ohara.import_download(src, "Berserk"), 1)
+        self.assertEqual(tools, ["7z", "bsdtar"])
         with zipfile.ZipFile(self.root / "Berserk" / "Vol 1.cbz") as z:
             self.assertEqual(z.namelist(), ["p1.png"])
 
