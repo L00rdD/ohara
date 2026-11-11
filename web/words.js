@@ -247,6 +247,20 @@ const Words = (() => {
     return l.done ? W().lighterProgress(l.done, l.total, size(l.saved)) : W().lighterNone(l.total);
   }
 
+  // the ailments by series, in the order they come: [[series ("" for the whole
+  // library), [ailment…]]…]
+  function bySeries(list) {
+    const groups = new Map();
+    for (const a of list) groups.set(a.series || "", [...(groups.get(a.series || "") || []), a]);
+    return [...groups];
+  }
+
+  // whether a series' sheet is drawn again after the library reloads: only when its
+  // series changed, and not while you are on it (typing, an image on its way)
+  function redrawn(s, drawn, busy, typing) {
+    return Boolean(s) && JSON.stringify(s) !== drawn && !busy && !typing;
+  }
+
   // what the card of a place selected on a shelf offers: a volume can be read, marked
   // read (or back to unread when it is read) and lead to its series' sheet; a missing
   // tome only to the sheet, where it can be fetched
@@ -286,7 +300,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

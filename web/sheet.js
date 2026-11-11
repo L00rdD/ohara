@@ -5,7 +5,7 @@
 const Sheet = (() => {
   const { $, el, button, twice, bar, api } = UI;
   const W = () => I18n.words();
-  const { tomes, describe, readingState, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, coverUrl, volumeName, tileLook, readCounts, upTo, decorUrl, decorChoices, decorName } = Words;
+  const { tomes, describe, readingState, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, coverUrl, volumeName, tileLook, readCounts, upTo, decorUrl, decorChoices, decorName, redrawn } = Words;
   let ctx = { reload: () => {}, closeSheet: () => {} };
   let shown = null; // the name of the series on the sheet
 
@@ -259,18 +259,19 @@ const Sheet = (() => {
     draw(s);
   }
 
-  // after the library reloads, the sheet shows the series as it is now
   // After the library reloads (every few seconds while something downloads), the
   // sheet is drawn again only when its series changed, and never while you are on it:
   // typing a link, choosing a photo, an image on its way. It keeps where it was scrolled.
   let drawn = "";
   function refresh(series) {
-    if (!shown || $("series").hidden) return;
+    const sheet = $("series");
+    if (!shown || sheet.hidden) return;
     const s = series.find((x) => x.name === shown);
-    if (!s || JSON.stringify(s) === drawn || busy || $("series").contains(document.activeElement) && document.activeElement.matches("input")) return;
-    const at = $("series").scrollTop;
+    const typing = sheet.contains(document.activeElement) && document.activeElement.matches("input");
+    if (!redrawn(s, drawn, busy, typing)) return;
+    const at = sheet.scrollTop;
     draw(s);
-    $("series").scrollTop = at;
+    sheet.scrollTop = at;
   }
 
   return { init: (context) => (ctx = context), open, refresh };

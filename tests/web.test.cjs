@@ -327,3 +327,18 @@ test("how far Franky has gone", () => {
   assert.equal(fr(() => Ohara.lighterText({ done: 0, total: 340, saved: 0 })), "Aucun des 340 tomes n'est encore passé entre ses mains.");
   assert.equal(en(() => Ohara.lighterText({ done: 2, total: 9, saved: 5e8 })), "2 of 9 volumes seen · 500 MB saved");
 });
+
+test("the ailments by series, the library's own apart", () => {
+  const list = [{ id: 1, series: "B" }, { id: 2, series: null }, { id: 3, series: "B" }, { id: 4, series: "A" }];
+  assert.deepEqual(Ohara.bySeries(list).map(([s, l]) => [s, l.map((a) => a.id)]), [["B", [1, 3]], ["", [2]], ["A", [4]]]);
+  assert.deepEqual(Ohara.bySeries([]), []);
+});
+
+test("a series' sheet drawn again only when it changed, and not while you are on it", () => {
+  const s = { name: "S", volumes: [] };
+  assert.equal(Ohara.redrawn(s, "", 0, false), true);
+  assert.equal(Ohara.redrawn(s, JSON.stringify(s), 0, false), false); // the same
+  assert.equal(Ohara.redrawn({ ...s, follow: true }, JSON.stringify(s), 1, false), false); // an image on its way
+  assert.equal(Ohara.redrawn({ ...s, follow: true }, JSON.stringify(s), 0, true), false); // typing
+  assert.equal(Ohara.redrawn(undefined, "", 0, false), false);
+});

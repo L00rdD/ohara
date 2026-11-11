@@ -50,9 +50,7 @@ const Doctor = (() => {
   // the list, by series, the library's own first
   function draw() {
     const sheet = $("ailments");
-    const groups = new Map();
-    for (const a of known) groups.set(a.series || "", [...(groups.get(a.series || "") || []), a]);
-    const parts = [...groups].map(([series, list]) => {
+    const parts = Words.bySeries(known).map(([series, list]) => {
       const part = el("div", "ailments-of");
       part.append(el("h3", "", series || W().wholeLibrary), ...list.map(row));
       return part;
