@@ -11,8 +11,10 @@ JAPANESE = re.compile(r"(?i)\b(jp|jap|raw)\b|[぀-ヿ]|巻")
 FRENCH_TRACKERS = ("YggReborn", "Torrent9", "World-torrent")
 LANG_ORDER = {"FR": 0, "EN": 1, "?": 2, "JP": 3}
 
-# "T05", "Tome 5", "v05", "Vol. 5", "Volume 5"; not the t of "Scantrad"
-_TOME = r"(?<![a-z])(?:tomes?|t|vol(?:ume)?s?\.?|v)[\s._-]*0*"
+# "T05", "Tome 5", "Tome #5", "Tome n°5", "v05", "Vol. 5", "Volume 5"; not the t of "Scantrad"
+_TOME = r"(?<![a-z])(?:tomes?|t|vol(?:ume)?s?\.?|v)[\s._-]*(?:#|n[°o]\.?)?\s*0*"
+BRACKETS = re.compile(r"\[[^\]]*\]|\([^)]*\)|\{[^}]*\}")
+LONE_NUMBER = re.compile(r"(?<![\d.])(\d{1,4}(?:\.\d+)?)(?![\d])")
 VOLUME = re.compile(r"(?i)" + _TOME + r"(\d+(?:\.\d+)?)")
 TOME_RANGE = re.compile(r"(?i)" + _TOME + r"(\d{1,4})(?:\s*(?:à|-|–|to|&|et)\s*(?:(?:tomes?|t|vol\.?|v)[\s._-]*)?0*(\d{1,4}))?(?!\d)")
 SERIES_END = re.compile(r"(?i)[\s._-]*(\b(tomes?|t\d+|vol(ume)?s?|v\d+|int[ée]grale|cbz|cbr|pdf|epub|ebook|complete|chapitres?)\b|\d+\s*(à|-|to)\s*\d+).*$")
@@ -45,9 +47,15 @@ def safe_name(name):
 
 
 def volume_number(filename):
-    """5.0 for "Naruto T05.cbz", None when the name gives no number."""
-    m = VOLUME.search(Path(filename).stem)
-    return float(m.group(1)) if m else None
+    """5.0 for "Naruto T05.cbz", None when the name gives no number. What is in
+    brackets is left out ("[V2]" is a scan's version, "(2023)" a year); without a
+    word for tome, the last number standing alone is taken ("One Piece 105")."""
+    name = BRACKETS.sub(" ", Path(filename).stem)
+    m = VOLUME.search(name)
+    if m:
+        return float(m.group(1))
+    lone = LONE_NUMBER.findall(name)
+    return float(lone[-1]) if lone else None
 
 
 def volume_label(filename):

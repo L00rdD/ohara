@@ -136,6 +136,19 @@ class MoreNames(unittest.TestCase):
         self.assertEqual([ohara.speed(n) for n in (25, 4, 1, 0)], ["rapide", "correct", "lent", "bloqué"])
         self.assertEqual(ohara.volume_number("Naruto T05.cbz"), 5.0)
         self.assertIsNone(ohara.volume_number("ScanTrad bonus.cbz"))
+        cases = {
+            "[Compressé] Naruto [Team Chromatique] - Tome #001 - [V2].cbz": 1,
+            "[Compressé] Naruto [Team Chromatique] - Tome #072 - [V1].cbz": 72,
+            "One Piece 105 (2023).cbz": 105,
+            "One Piece Tome 109 - Scan.cbz": 109,
+            "Berserk Tome n°12.cbz": 12,
+            "Frieren - Vol. 3.5.cbz": 3.5,
+            "Blue Lock (2018) [Digital] T07.cbz": 7,
+            "20th Century Boys 05.cbz": 5,
+            "Artbook (2020).cbz": None,
+        }
+        for name, number in cases.items():
+            self.assertEqual(ohara.volume_number(name), number, name)
 
 
 class Search(Library):
