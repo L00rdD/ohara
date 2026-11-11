@@ -22,6 +22,7 @@ const Ohara = (() => {
     $("flag").title = I18n.get() === "fr" ? "English" : "Français";
     $("open-settings").title = W().settings;
     $("open-contents").title = W().contentsHint;
+    $("lectern-back").title = $("lectern-back").ariaLabel = W().lecternBack;
     $("turn-left").title = W().turnLeft;
     $("turn-right").title = W().turnRight;
     $("search-form").q.placeholder = W().search;
@@ -224,14 +225,16 @@ const Ohara = (() => {
   }
 
   // ---- the lectern ----
-  // It can be put away (its ✕): it then stays away until another volume is read.
+  // It can be put away (its ✕): a button in the corner brings it back, and so does
+  // reading another volume.
   const away = () => localStorage.getItem("ohara-lectern-away");
   function drawLectern() {
     const box = $("lectern");
     const shown = lecternVolume(lib.last, lib.series);
     const state = lecternState(shown, lib.series, away());
     box.style.setProperty("--lw", bySize(200, 250, 270) + "px");
-    box.hidden = state === "hidden";
+    box.hidden = state === "hidden" || state === "away";
+    $("lectern-back").hidden = state !== "away";
     if (state === "empty") drawInvitation(box);
     if (state === "reading") drawOpenBook(box, shown);
   }
@@ -251,6 +254,18 @@ const Ohara = (() => {
     localStorage.setItem("ohara-lectern-away", v.id);
     drawLectern();
     drawRotunda();
+  }
+  function bringBack() {
+    localStorage.removeItem("ohara-lectern-away");
+    drawLectern();
+    drawRotunda();
+  }
+
+  // a sheet (a series, the settings) closes with a touch outside it; the header's
+  // buttons open their own things
+  function closeOutside(e) {
+    if (e.target.closest(".top, #selection, .sheet")) return;
+    for (const id of ["series", "settings"]) if (!$(id).hidden) closeSheet($(id));
   }
 
   function drawInvitation(box) {
@@ -424,7 +439,9 @@ const Ohara = (() => {
     wireRotunda();
     $("open-search").onclick = Search.open;
     $("flag").onclick = () => setLanguage(I18n.get() === "fr" ? "en" : "fr");
-    $("open-settings").onclick = Settings.open;
+    $("open-settings").onclick = () => ($("settings").hidden ? Settings.open() : closeSheet($("settings")));
+    $("lectern-back").onclick = bringBack;
+    addEventListener("pointerdown", closeOutside);
     Settings.init({ spineStyle: () => spineStyle, setSpineStyle: (style) => ((spineStyle = style), drawRotunda()), setRibbon, setLanguage, closeSheet });
     Search.init({ series: () => lib.series, reload: load });
     Sheet.init({ reload: load, closeSheet });

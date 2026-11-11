@@ -23,18 +23,24 @@ const Settings = (() => {
       el("h3", "", W().lecternTitle), settingSwitch("ribbon", W().ribbonSetting, (st) => ctx.setRibbon(st.ribbon)),
       el("h3", "", W().music), el("p", "note", W().brookHint), brookSwitch(),
       el("h3", "", W().lighterTitle), el("p", "note", W().frankyHint), ...frankySwitch(),
-      el("h3", "", W().indexers), el("p", "note", W().indexersHint), list);
-    const add = el("a", "button", W().addIndexer);
-    add.href = `http://${location.hostname}:9696/`;
-    add.target = "_blank";
-    add.rel = "noopener";
-    sheet.append(add);
+      indexersBox(list));
     sheet.hidden = false;
     try {
       drawIndexers(list, await api("/api/indexers"));
     } catch {
       list.replaceChildren(el("p", "error", W().indexersFailed));
     }
+  }
+
+  // where to search: folded, it is seldom changed
+  function indexersBox(list) {
+    const box = el("details", "fold");
+    const add = el("a", "button", W().addIndexer);
+    add.href = `http://${location.hostname}:9696/`;
+    add.target = "_blank";
+    add.rel = "noopener";
+    box.append(el("summary", "", W().indexers), el("p", "note", W().indexersHint), list, add);
+    return box;
   }
 
   // the three styles of spines, each shown with a sample of three spines

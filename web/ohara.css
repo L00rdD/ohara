@@ -156,6 +156,8 @@ button { font: inherit; color: inherit; }
 .lectern .mark { position: absolute; z-index: 2; left: calc(50% - 6px); top: -6px; width: 12px; height: calc(100% + 26px); background: linear-gradient(90deg, #8e1f1f, #c23a32 50%, #8e1f1f); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 90%, 0 100%); }
 .lectern .desk { width: 96%; height: 12px; border-radius: 3px; background: linear-gradient(180deg, #a26d42, #5a3820); box-shadow: 0 8px 14px rgba(0,0,0,.5); }
 .lectern .stand { width: 26%; height: calc(var(--lw, 320px) * .1); background: linear-gradient(90deg, #3a2412, #6b4528 45%, #3a2412); clip-path: polygon(28% 0, 72% 0, 100% 100%, 0 100%); }
+/* the lectern put away: a book in the corner brings it back */
+.lectern-back { position: absolute; z-index: 8; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); font-size: 20px; }
 /* its ✕: the lectern put away until another volume is read */
 .lectern .away { position: absolute; z-index: 3; top: 0; right: -14px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(244,232,204,.25); background: rgba(20,12,6,.75); color: var(--text); font-size: 14px; line-height: 1; cursor: pointer; }
 .lectern .away:hover, .lectern .away:focus-visible { background: rgba(20,12,6,.95); }
@@ -179,7 +181,8 @@ button { font: inherit; color: inherit; }
   animation: rise .35s cubic-bezier(.2,.7,.2,1); }
 .sheet.small { max-width: 560px; margin: 0 auto; }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
-.sheet .close { position: absolute; right: 18px; top: 16px; }
+/* the ✕ stays at hand however far the sheet is scrolled */
+.sheet .close { position: sticky; z-index: 5; top: 0; float: right; margin: -10px -8px 0 12px; background: rgba(40, 25, 14, .95); }
 .sheet-head { display: grid; grid-template-columns: auto 1fr; gap: 26px; align-items: end; margin-bottom: 26px; }
 .sheet-head img { width: 150px; aspect-ratio: 2/3; object-fit: cover; border-radius: 3px 6px 6px 3px; box-shadow: 0 16px 30px rgba(0,0,0,.5); }
 .sheet h2 { margin: 0 0 6px; font: 600 calc(var(--s) * 44px)/1 var(--display); }
@@ -252,6 +255,13 @@ button { font: inherit; color: inherit; }
 .vol.done:not(.face) .vn::after { content: "✓"; display: block; margin-top: 3px; color: #e8c77a; font-size: 10px; }
 
 /* settings */
+/* a part of the settings folded away: its title opens it */
+.fold { margin-top: 22px; }
+.fold summary { cursor: pointer; font: 600 24px/1 var(--display); list-style: none; }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+.fold[open] summary::before { transform: rotate(90deg); }
+.fold > .button { display: inline-block; margin-top: 12px; }
 .option { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(244,232,204,.08); }
 .option input { width: 18px; height: 18px; accent-color: var(--leaf); }
 .option b { font-weight: 600; }

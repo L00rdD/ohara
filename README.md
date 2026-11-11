@@ -50,7 +50,7 @@ Tree of Knowledge.
   sheet lets you put its AniList cover there instead, bare wood, a volume's cover (from
   that volume's ⋯ menu), or an image of its own: sent from the phone or the computer,
   or fetched from a link. Ohara keeps that image itself, in `.ohara/decors`.
-- **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda (its ✕ puts it away until another volume is read; its red ribbon can be taken off in the settings),
+- **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda (its ✕ puts it away, the 📖 in the corner or reading another volume brings it back; its red ribbon can be taken off in the settings),
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.
 - **The lantern.** Downloads under way light the lantern in the header, the more the
