@@ -165,7 +165,7 @@ const Ohara = (() => {
     drum.style.setProperty("--bw", g.bw + "px");
     drum.style.setProperty("--r", g.r.toFixed(0) + "px");
     drum.style.setProperty("--pull", (g.r * 0.96).toFixed(0) + "px");
-    drum.style.setProperty("--below", lib.last ? bySize("290px", "320px", "330px") : "120px");
+    drum.style.setProperty("--below", lecternRoom() + "px");
     drum.style.setProperty("--rot", rot + "deg");
     const bays = [];
     for (let i = 0; i < g.count; i++) if (R.visible(R.offset(i, rot, g.count))) bays.push(bay(wall[i], i, g));
@@ -223,14 +223,28 @@ const Ohara = (() => {
   }
 
   // ---- the lectern ----
+  // It can be put away (its ✕): it then stays away until another volume is read.
+  const away = () => localStorage.getItem("ohara-lectern-away");
   function drawLectern() {
     const box = $("lectern");
     const shown = lecternVolume(lib.last, lib.series);
-    const state = lecternState(shown, lib.series);
-    box.style.setProperty("--lw", bySize(260, 320, 340) + "px");
+    const state = lecternState(shown, lib.series, away());
+    box.style.setProperty("--lw", bySize(200, 250, 270) + "px");
     box.hidden = state === "hidden";
     if (state === "empty") drawInvitation(box);
     if (state === "reading") drawOpenBook(box, shown);
+  }
+
+  // the room the shelves leave under them: the lectern's height, or a little
+  function lecternRoom() {
+    const box = $("lectern");
+    return box.hidden ? 70 : box.offsetHeight + 36;
+  }
+
+  function putAway(v) {
+    localStorage.setItem("ohara-lectern-away", v.id);
+    drawLectern();
+    drawRotunda();
   }
 
   function drawInvitation(box) {
@@ -252,7 +266,9 @@ const Ohara = (() => {
       book.append(page);
     }
     book.append(el("span", "mark"));
-    box.replaceChildren(cap, book, el("span", "desk"), el("span", "stand"));
+    const shut = button("✕", "away", () => putAway(v));
+    shut.title = shut.ariaLabel = W().lecternAway;
+    box.replaceChildren(cap, book, shut, el("span", "desk"), el("span", "stand"));
   }
 
   function emptyBook() {
@@ -359,8 +375,8 @@ const Ohara = (() => {
       if (i >= 0) rot = R.rotationFor(i, 0, R.bayCount(wall.length));
       turnedOnce = true;
     }
-    drawRotunda();
     drawLectern();
+    drawRotunda();
     drawLantern();
   }
 

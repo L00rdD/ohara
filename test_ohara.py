@@ -805,7 +805,7 @@ class Http(Reading):
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
         lighter = {"done": 0, "total": 3, "saved": 0}
-        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": True, "lighter": lighter})
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": False, "lighter": lighter})
         self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False, "franky": False})[2]),
                          {"spines": "sobre", "brook": False, "franky": False, "lighter": lighter})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
@@ -1066,8 +1066,8 @@ class Robin(Library):
         self.assertEqual(ohara.load_state()["spines"], {})
 
     def test_spine_style_setting(self):
-        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": True})
-        self.assertEqual(ohara.set_settings({"spines": "reliure"})["spines"], "reliure")
+        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": False})  # Franky waits to be asked
+        self.assertEqual(ohara.set_settings({"spines": "reliure", "franky": True})["spines"], "reliure")
         self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
         ohara.set_settings({"spines": "neon", "brook": "yes", "franky": "no"})
         self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
@@ -1183,12 +1183,17 @@ class Franky(Library):
         self.assertEqual(ohara.load_state()["franky"]["Manga/Manga T02.cbz"], [read.stat().st_size] * 2)
 
     def test_franky_rests_when_all_is_done_or_he_is_off(self):
+        ohara.set_settings({"franky": True})
+        left = self.root / "Manga" / ".Manga T01.cbz.franky"
+        left.parent.mkdir(parents=True)
+        left.write_bytes(b"half")
         calls = []
         with mock.patch.object(ohara.os, "nice"), mock.patch.object(ohara, "franky_one", side_effect=[True, OSError("disk")]), \
                 mock.patch.object(ohara.time, "sleep", side_effect=lambda s: calls.append(s) if len(calls) < 2 else (_ for _ in ()).throw(StopIteration)):
             with self.assertRaises(StopIteration):
                 ohara.franky_loop()
         self.assertEqual(calls, [1, ohara.FRANKY_REST])
+        self.assertFalse(left.exists())  # what he left half written is gone
         ohara.set_settings({"franky": False})
         with mock.patch.object(ohara.os, "nice"), mock.patch.object(ohara, "franky_one") as one, \
                 mock.patch.object(ohara.time, "sleep", side_effect=StopIteration), self.assertRaises(StopIteration):

@@ -145,8 +145,10 @@ const Words = (() => {
 
   // what the lectern shows: nothing (a library but nothing read yet), an invitation
   // (an empty library) or the volume being read, open at its page
-  function lecternState(last, series) {
-    if (last) return "reading";
+  // what the lectern shows: the volume being read (unless it was put away), an
+  // invitation to search when the library is empty, or nothing
+  function lecternState(last, series, away = null) {
+    if (last) return last.id === away ? "hidden" : "reading";
     return series.length ? "hidden" : "empty";
   }
   // the two pages open on the lectern, as the reader shows them two by two: the

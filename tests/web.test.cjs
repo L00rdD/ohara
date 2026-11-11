@@ -142,6 +142,8 @@ test("what the lectern shows", () => {
   assert.equal(Ohara.lecternState(null, []), "empty");
   assert.equal(Ohara.lecternState(null, [{}]), "hidden");
   assert.equal(Ohara.lecternState({}, [{}]), "reading");
+  assert.equal(Ohara.lecternState({ id: "S/1" }, [{}], "S/1"), "hidden"); // put away
+  assert.equal(Ohara.lecternState({ id: "S/2" }, [{}], "S/1"), "reading"); // back with another volume
   const url = (n) => `/api/page?vol=S%2FT5.cbz&n=${n}`;
   assert.deepEqual(Ohara.lecternPages(vol({ page: 0, pages: 195 })), [null, url(0)]);
   assert.deepEqual(Ohara.lecternPages(vol({ page: 7, pages: 195 })), [url(7), url(8)]);

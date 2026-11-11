@@ -48,7 +48,7 @@ Tree of Knowledge.
   sheet lets you put its AniList cover there instead, bare wood, a volume's cover (from
   that volume's ⋯ menu), or an image of its own: sent from the phone or the computer,
   or fetched from a link. Ohara keeps that image itself, in `.ohara/decors`.
-- **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda,
+- **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda (its ✕ puts it away until another volume is read),
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.
 - **The lantern.** Downloads under way light the lantern in the header, the more the
@@ -83,8 +83,9 @@ Tree of Knowledge.
   does not show, the room saved does (about 40 % on a black and white series). A few
   pages tried first tell whether a volume is worth it; a series already well squeezed
   is left as it is. The new volume is written under a hidden name, checked, and only
-  then replaces the original, which is gone. The volumes being read wait; he can be
-  switched off in the settings, which say how far he has gone.
+  then replaces the original, which is gone. As he replaces your files, Franky is off
+  until you switch him on in the settings, which then say how far he has gone. The
+  volumes being read wait.
 - **French or English.** The flag in the header switches the interface; the choice
   is kept in the browser.
 - **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,

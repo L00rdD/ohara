@@ -722,7 +722,7 @@ def read_spines(limit=10):
 
 def settings():
     st = load_state()["settings"]
-    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", True)}
+    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", False)}
 
 
 def settings_page():
@@ -795,8 +795,11 @@ def franky_progress():
 
 
 def franky_loop():
-    """Franky works in the background, at a low priority, a volume after the other."""
+    """Franky works in the background, at a low priority, a volume after the other, once
+    switched on in the settings: he replaces the originals, so he is off at first."""
     os.nice(10)  # only this thread, on Linux
+    for left in MANGA.glob("*/.*.franky"):  # a volume he was writing when Ohara stopped
+        left.unlink(missing_ok=True)
     while True:
         try:
             busy = settings()["franky"] and franky_one()
