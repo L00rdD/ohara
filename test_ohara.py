@@ -646,13 +646,17 @@ class Reading(Library):
                 z.writestr(name, b.getvalue())
         made = ohara.size_page(path, 0, 1200)
         img = Image.open(made)
-        self.assertEqual((img.size, img.mode), ((1200, 800), "L"))
-        self.assertIsNone(ohara.size_page(path, 1, 800))  # hardly wider: as it is
-        self.assertEqual(Image.open(ohara.size_page(path, 2, 800)).mode, "RGB")  # a page in colour
+        self.assertEqual((made.suffix, img.format, img.size), (".webp", "WEBP", (1200, 800)))
+        r, g, b = img.convert("RGB").getpixel((600, 400))
+        self.assertTrue(r == g == b)  # grey, its stray colour gone
+        small = Image.open(ohara.size_page(path, 1, 1200))  # narrower: only in WebP
+        self.assertEqual((small.size, small.mode), ((900, 1300), "RGB"))
+        r, g, b = Image.open(ohara.size_page(path, 2, 800)).convert("RGB").getpixel((5, 5))
+        self.assertGreater(r - g, 100)  # a page in colour keeps it
         self.assertTrue(ohara.looks_grey(Image.new("1", (4, 4))))
         with mock.patch.object(ohara, "page_bytes", side_effect=AssertionError("not again")):
             self.assertEqual(ohara.size_page(path, 0, 1200), made)
-            self.assertIsNone(ohara.size_page(path, 1, 800))
+        self.assertIs(ohara.page_lock("a"), ohara.page_lock("a"))
 
     def test_a_volume_is_made_ahead_from_the_page_read(self):
         path = self.root / "Naruto" / "Naruto T01.cbz"
@@ -786,15 +790,18 @@ class Http(Reading):
         with mock.patch.object(ohara, "warm") as warm:
             self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz")
         warm.assert_not_called()
-        sized = self.root / "sized.jpg"
+        sized = self.root / "sized.webp"
         sized.write_bytes(b"SMALL")
         with mock.patch.object(ohara, "size_page", return_value=sized):
             code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0&w=800")
         self.assertEqual((code, payload), (200, b"SMALL"))
-        self.assertIn("image/jpeg", head)
-        with mock.patch.object(ohara, "size_page", return_value=None):
-            code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0&w=800")
+        self.assertIn("image/webp", head)
+        code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0")  # as it is
         self.assertIn("image/png", head)
+        self.assertIn("HTTP/1.1 200", head)
+        code, head, _ = self.call("GET", "/api/nothing-here")
+        self.assertEqual(code, 404)
+        self.assertIn("Connection: close", head)
         code, head, _ = self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")
         self.assertEqual(code, 200)
         self.assertIn("image/jpeg", head)

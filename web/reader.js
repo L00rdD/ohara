@@ -2,8 +2,9 @@
 // A click on the right half turns to the next page, on the left half back to the
 // previous one. The bars show while the mouse moves, or with the corner button.
 // The page reached is saved on the server, so another device picks it up. Pages come
-// at the width of the screen and are made ready ahead: a page shows only once it is
-// whole, the one before stays until then.
+// at the width of the screen; once a volume opens, all its pages come in the
+// background and stay in memory, so turning a page does not wait on the network. A
+// page shows only once it is whole, the one before stays until then.
 const Reader = (() => {
   // ---- pure page arithmetic (tested in node) ----
 
@@ -38,7 +39,13 @@ const Reader = (() => {
     return Array.from({ length: to - from }, (_, i) => from + i);
   }
 
-  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around };
+  // The order a volume's pages are fetched in: from p to the end, then those before
+  const wholeOrder = (p, count) => Array.from({ length: count }, (_, i) => (p + i) % count);
+
+  // Whether to get the next volume ready: within the last ten pages
+  const nearEnd = (p, count) => p >= count - 10;
+
+  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around, wholeOrder, nearEnd };
 
   // ---- the page ----
   const $ = (id) => document.getElementById(id);
@@ -53,21 +60,70 @@ const Reader = (() => {
   let saveTimer = null;
 
   let width = 0;
-  const src = (n) => `/api/page?vol=${encodeURIComponent(vid)}&n=${n}&w=${width}`;
+  const pageUrl = (id, n) => `/api/page?vol=${encodeURIComponent(id)}&n=${n}&w=${width}`;
 
-  // the pages loaded, whole, ready to show: those around the page read
+  // ---- the volume, kept in memory: every page fetched once, as an object URL ----
+  let kept = new Map();
+  let fetching = new AbortController();
+  function fetchPage(n) {
+    if (!kept.has(n)) {
+      const map = kept;
+      const got = fetch(pageUrl(vid, n), { signal: fetching.signal })
+        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+        .then((b) => URL.createObjectURL(b));
+      got.catch(() => map.get(n) === got && map.delete(n)); // asked again when needed
+      map.set(n, got);
+    }
+    return kept.get(n);
+  }
+
+  // all the pages of the volume, two at a time, from the page read on; the pages to
+  // show go first, as they are asked for directly
+  async function fetchAll() {
+    const ctl = fetching;
+    const order = wholeOrder(page, info.count);
+    let i = 0;
+    const one = async () => {
+      while (i < order.length && fetching === ctl) await fetchPage(order[i++]).catch(() => {});
+    };
+    await Promise.all([one(), one()]);
+  }
+
+  // a new volume, or pages of another width: what was kept goes
+  function forget() {
+    fetching.abort();
+    for (const got of kept.values()) got.then((url) => URL.revokeObjectURL(url), () => {});
+    kept = new Map();
+    fetching = new AbortController();
+    ready = new Map();
+    width = pageWidth(innerWidth, devicePixelRatio || 1, settings.double);
+  }
+
+  // the next volume, near the end of this one: the server makes its pages, and its
+  // first ones wait in the browser's cache
+  let readied = null;
+  function readyNext() {
+    if (!info.next || readied === info.next || !nearEnd(page, info.count)) return;
+    readied = info.next;
+    fetch(`/api/pages?vol=${encodeURIComponent(info.next)}&w=${width}`)
+      .then(() => [0, 1, 2].forEach((n) => fetch(pageUrl(info.next, n)).catch(() => {})))
+      .catch(() => {});
+  }
+
+  // the pages decoded, ready to show: those around the page read
   let ready = new Map();
   function image(n) {
     if (!ready.has(n)) {
-      const img = Object.assign(new Image(), { src: src(n), alt: `Page ${n + 1}` });
-      img.whole = img.decode().catch(() => {});
+      const img = Object.assign(new Image(), { alt: `Page ${n + 1}` });
+      img.whole = fetchPage(n)
+        .then((url) => {
+          img.src = url;
+          return img.decode();
+        })
+        .catch(() => {});
       ready.set(n, img);
     }
     return ready.get(n);
-  }
-  function forget() {
-    ready = new Map();
-    width = pageWidth(innerWidth, devicePixelRatio || 1, settings.double);
   }
   function getAhead() {
     const keep = new Set(around(page, info.count, settings.double));
@@ -92,6 +148,7 @@ const Reader = (() => {
     stage.replaceChildren(...imgs);
     stage.scrollTo(0, 0);
     getAhead();
+    readyNext();
   }
 
   function say() {
@@ -116,7 +173,7 @@ const Reader = (() => {
     page = Math.max(0, Math.min(n, info.count - 1));
     say();
     save();
-    draw();
+    return draw();
   }
 
   function next() {
@@ -145,7 +202,8 @@ const Reader = (() => {
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
     $("slider").max = info.count;
     if (typeof Player !== "undefined") Player.open(info.series);
-    go(info.page >= info.count - 1 ? 0 : info.page);
+    await go(info.page >= info.count - 1 ? 0 : info.page);
+    fetchAll();
   }
 
   // the bars: shown by the corner button, or for a few seconds while the mouse moves
@@ -161,8 +219,9 @@ const Reader = (() => {
   function setting(key, value) {
     settings[key] = value;
     localStorage.setItem("ohara-" + (key === "double" ? "mode" : key), key === "double" ? (value ? "double" : "single") : value);
-    if (key === "double") forget();
-    go(page);
+    if (key !== "double") return go(page);
+    forget();
+    go(page).then(fetchAll);
   }
 
   function keys(e) {

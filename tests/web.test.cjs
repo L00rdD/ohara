@@ -306,3 +306,11 @@ test("the pages made ready around the one read", () => {
   assert.deepEqual(Reader.around(10, 100, true), [7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
   assert.deepEqual(Reader.around(98, 100, false), [96, 97, 98, 99]);
 });
+
+test("a volume's pages fetched from the one read, then those before", () => {
+  assert.deepEqual(Reader.wholeOrder(3, 6), [3, 4, 5, 0, 1, 2]);
+  assert.deepEqual(Reader.wholeOrder(0, 3), [0, 1, 2]);
+  assert.deepEqual(Reader.wholeOrder(0, 0), []);
+  assert.equal(Reader.nearEnd(89, 100), false);
+  assert.equal(Reader.nearEnd(90, 100), true);
+});

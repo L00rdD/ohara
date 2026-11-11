@@ -1120,11 +1120,15 @@ def page_bytes(path, n):
 # ---------- pages the size of the screen ----------
 # Scans are often far wider than a screen (3000 px, over a megabyte). The reader asks
 # for pages at its width, rounded up to one of WIDTHS; Ohara makes each page once, at
-# most that wide, keeps it in .ohara/pages, and makes those of a volume ahead of the
-# reader as soon as it is opened.
+# most that wide and in WebP (black and white ones without their stray colours, lighter),
+# keeps it in .ohara/pages,
+# and makes those of a volume ahead of the reader as soon as it is opened.
 WIDTHS = (800, 1200, 1600, 2400)
 PAGES_KEPT = 12  # volumes whose pages are kept at the size of a screen
 warming = {"job": None}  # the volume being made ahead; opening another stops it
+WARMERS = 2  # pages made ahead at once
+page_locks = {}
+page_locks_guard = threading.Lock()
 
 
 def page_width(w):
@@ -1149,27 +1153,33 @@ def looks_grey(img):
     return all(max(dots[i:i + 3]) - min(dots[i:i + 3]) < 28 for i in range(0, len(dots), 3))
 
 
+def page_lock(key):
+    """One lock per page, so the reader and the making ahead never make it twice."""
+    with page_locks_guard:
+        return page_locks.setdefault(key, threading.Lock())
+
+
 def size_page(path, n, w):
-    """Page n at most w pixels wide: the JPEG kept, made now if need be; None when the
-    page is hardly wider, to be sent as it is."""
-    folder = sized_dir(path, w)
-    out, same = folder / f"{n}.jpg", folder / f"{n}.same"
-    if out.exists() or same.exists():
-        return out if out.exists() else None
+    """Page n at most w pixels wide, as a WebP kept on disk, made now if need be."""
+    out = sized_dir(path, w) / f"{n}.webp"
+    with page_lock(str(out)):
+        if not out.exists():
+            make_page(path, n, w, out)
+    return out
+
+
+def make_page(path, n, w, out):
     from PIL import Image
     data, _ = page_bytes(path, n)
     img = Image.open(io.BytesIO(data))
-    folder.mkdir(parents=True, exist_ok=True)
-    if img.width <= w * 1.15:
-        same.touch()
-        return None
-    img.draft(img.mode, (w, img.height * w // img.width))
+    if img.width > w:
+        img.draft(img.mode, (w, img.height * w // img.width))
     img = img.convert("L" if looks_grey(img) else "RGB")
     img.thumbnail((w, img.height))
-    tmp = folder / f"{n}.{threading.get_ident()}.tmp"
-    img.save(tmp, "JPEG", quality=78)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".tmp")
+    img.save(tmp, "WEBP", quality=75, method=2)
     tmp.replace(out)
-    return out
 
 
 def trim_pages(keep=PAGES_KEPT):
@@ -1183,8 +1193,9 @@ def trim_pages(keep=PAGES_KEPT):
 
 
 def warm(path, w, start):
-    """Makes a volume's pages at width w in the background, from the page the reader is
-    at to the end, then those before; opening another volume stops it."""
+    """Makes a volume's pages at width w in the background, two at a time, from the
+    page the reader is at to the end, then those before; opening another volume stops
+    it."""
     job = object()
     warming["job"] = job
     folder = sized_dir(path, w)
@@ -1192,7 +1203,7 @@ def warm(path, w, start):
     os.utime(folder)
     trim_pages()
     count = len(pages(path))
-    order = list(range(start, count)) + list(range(min(start, count)))
+    order = iter(list(range(start, count)) + list(range(min(start, count))))
 
     def run():
         for n in order:
@@ -1203,7 +1214,8 @@ def warm(path, w, start):
             except Exception as e:
                 print(f"pages {path.name} {n}: {e}", flush=True)
                 return
-    threading.Thread(target=run, daemon=True).start()
+    for _ in range(WARMERS):
+        threading.Thread(target=run, daemon=True).start()
 
 
 def cover(path):
@@ -1277,6 +1289,11 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": 
 
 
 class Handler(BaseHTTPRequestHandler):
+    # one connection kept open for the pages of a volume, not one per page; an idle one
+    # is let go after a minute
+    protocol_version = "HTTP/1.1"
+    timeout = 60
+
     def log_message(self, *args):
         pass
 
@@ -1312,9 +1329,10 @@ class Handler(BaseHTTPRequestHandler):
                 return action(self)
             return self.static(path)
         except KeyError as e:
-            self.send(404, {"error": str(e)})
+            # a body may be left unread: the connection is not kept
+            self.send(404, {"error": str(e)}, extra={"Connection": "close"})
         except Exception as e:
-            self.send(502, {"error": str(e)})
+            self.send(502, {"error": str(e)}, extra={"Connection": "close"})
 
     def static(self, path):
         name = {"/": "index.html", "/read": "read.html"}.get(path, path.lstrip("/"))
@@ -1332,9 +1350,8 @@ def get_search(h):
 def get_page(h):
     q = h.query()
     path, n, w = volume_path(q["vol"]), int(q.get("n", 0)), page_width(q.get("w"))
-    sized = w and size_page(path, n, w)
-    if sized:
-        data, ctype = sized.read_bytes(), "image/jpeg"
+    if w:
+        data, ctype = size_page(path, n, w).read_bytes(), "image/webp"
     else:
         data, name = page_bytes(path, n)
         ctype = TYPES.get(Path(name).suffix.lower(), "image/jpeg")
