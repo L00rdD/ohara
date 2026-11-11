@@ -91,7 +91,7 @@ button { font: inherit; color: inherit; }
 .dragging .drum { transition: none; }
 .bay { position: absolute; top: 30px; left: calc(var(--bw) / -2); width: var(--bw); height: calc(100% - var(--below)); backface-visibility: hidden;
   transform: rotateY(var(--a)) translateZ(calc(var(--r) * -1)); }
-.bay-in { position: absolute; inset: 0; display: grid; grid-template-rows: auto repeat(3, minmax(0, 1fr)); filter: brightness(var(--lit)); transition: filter .4s;
+.bay-in { position: absolute; inset: 0; display: grid; grid-template-rows: auto repeat(3, minmax(0, 1fr)); filter: brightness(calc(var(--lit) * var(--glow, 1))); transition: filter .4s;
   background: linear-gradient(180deg, #2a190d, #1e1209); box-shadow: inset 14px 0 18px -10px rgba(0,0,0,.8), inset -14px 0 18px -10px rgba(0,0,0,.8); }
 .bay-in::before, .bay-in::after { content: ""; position: absolute; top: 0; bottom: 0; width: 14px; background: linear-gradient(90deg, var(--bark), var(--wood) 50%, var(--bark)); }
 .bay-in::before { left: -7px; } .bay-in::after { right: -7px; }
@@ -348,6 +348,11 @@ button { font: inherit; color: inherit; }
   .top .round { width: 38px; height: 38px; font-size: 16px; }
   .search-field { order: 9; flex: 1 0 100%; width: auto; height: 40px; }
   .rotunda { top: 118px; }
+  /* a phone's screen is small and often held in a dim room: more light, falling
+     wider and down to the floor, and brighter bays */
+  :root { --light: 0.9; --glow: 1.25; }
+  .beam { width: 86%; background: linear-gradient(180deg, rgba(255, 226, 160, calc(var(--light) * .42)), rgba(255, 210, 140, calc(var(--light) * .18)) 70%, rgba(255, 210, 140, calc(var(--light) * .06)) 100%);
+    clip-path: polygon(34% 0, 66% 0, 100% 100%, 0 100%); }
   /* a phone zooms on a field written smaller than 16 px: they are written at 16 */
   input, select, textarea { font-size: 16px !important; }
   .sheet-head { grid-template-columns: 1fr; }
