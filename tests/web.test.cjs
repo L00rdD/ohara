@@ -199,6 +199,8 @@ test("a volume's name in the language chosen", () => {
 test("what a bay's plaque says", () => {
   const s = { name: "Naruto", follow: true, volumes: new Array(72) };
   assert.deepEqual(fr(() => Ohara.plaqueText({ series: s, part: 0, parts: 1, span: [1, 72] })), { title: "Naruto", sub: "72 tomes · suivie" });
+  const some = { name: "Naruto", follow: false, volumes: [{ done: true }, { done: true }, { pages: 9 }, {}] };
+  assert.deepEqual(fr(() => Ohara.plaqueText({ series: some, part: 0, parts: 1, span: [1, 4] })), { title: "Naruto", sub: "2 lus sur 4" });
   assert.deepEqual(fr(() => Ohara.plaqueText({ series: s, part: 1, parts: 2, span: [37, 72] })), { title: "Naruto", sub: "Tomes 37 à 72" });
   assert.deepEqual(en(() => Ohara.plaqueText({ series: { ...s, follow: false }, part: 0, parts: 2, span: [1, 36] })), { title: "Naruto", sub: "Volumes 1 to 36" });
 });
@@ -237,4 +239,31 @@ test("what a download is called", () => {
   assert.equal(en(() => Ohara.downloadName({ kind: "ost", series: "Frieren" })), "Music of Frieren");
   assert.equal(fr(() => Ohara.downloadName({ kind: "volumes", series: "Naruto", range: [1, 72] })), "Naruto, tomes 1 à 72");
   assert.equal(fr(() => Ohara.downloadName({ series: "Naruto", range: null })), "Naruto");
+});
+
+test("how much of a series is read", () => {
+  const s = { volumes: [{ done: true, pages: 9 }, { pages: 9, page: 2 }, {}, {}] };
+  assert.deepEqual(Ohara.readCounts(s), { done: 1, started: 1, unread: 2, total: 4 });
+  assert.equal(fr(() => I18n.words().progressLine(1, 1, 2)), "1 lu, 1 en cours, 2 à lire");
+  assert.equal(fr(() => I18n.words().progressLine(3, 0, 0)), "3 lus");
+  assert.equal(en(() => I18n.words().progressLine(0, 2, 1)), "2 started, 1 to read");
+});
+
+test("the volumes up to one", () => {
+  const vs = [{ id: "a", number: 1 }, { id: "b", number: 2 }, { id: "c", number: 3 }, { id: "x", number: null }];
+  const s = { volumes: vs };
+  assert.deepEqual(Ohara.upTo(s, vs[1]), ["a", "b"]);
+  assert.deepEqual(Ohara.upTo(s, vs[3]), ["a", "b", "c", "x"]);
+});
+
+test("the lectern moves on to the next volume once one is finished", () => {
+  const vs = [{ id: "S/1", number: 1, readable: true, done: true }, { id: "S/2", number: 2, readable: true, done: false, pages: 0 }];
+  const series = [{ name: "S", meta: { color: "#1" }, volumes: vs }];
+  const last = { ...vs[0], series: "S", page: 9 };
+  assert.deepEqual(Ohara.lecternVolume(last, series), { ...vs[1], page: 0, series: "S", meta: { color: "#1" } });
+  assert.equal(Ohara.lecternVolume({ ...last, done: false }, series).id, "S/1");
+  assert.equal(Ohara.lecternVolume(null, series), null);
+  assert.equal(Ohara.lecternVolume({ ...last, series: "Gone" }, series).id, "S/1");
+  const allDone = [{ name: "S", meta: {}, volumes: [vs[0]] }];
+  assert.equal(Ohara.lecternVolume(last, allDone).id, "S/1");
 });

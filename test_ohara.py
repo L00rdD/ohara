@@ -524,6 +524,23 @@ class Reading(Library):
         self.assertEqual(d["H4"]["state"], "unknown")
         self.assertIsNone(d["H1"]["cover"])
 
+    def test_marking_read_and_unread(self):
+        ohara.save_progress("Naruto/Naruto T02.cbz", 0, 2)
+        before = ohara.load_state()["progress"]["Naruto/Naruto T02.cbz"]["at"]
+        ohara.mark_read(["Naruto/Naruto T01.cbz", "Naruto/Naruto T02.cbz", "Naruto/Naruto T03.pdf"], True)
+        progress = ohara.load_state()["progress"]
+        self.assertEqual(progress["Naruto/Naruto T01.cbz"], {"page": 1, "pages": 2, "at": 0})
+        self.assertEqual(progress["Naruto/Naruto T02.cbz"]["at"], before)
+        self.assertEqual(progress["Naruto/Naruto T03.pdf"], {"page": 0, "pages": 1, "at": 0})
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            lib = ohara.library()
+        self.assertEqual([v["done"] for v in lib["series"][0]["volumes"]], [True, True, True, False])
+        self.assertEqual(lib["last"]["id"], "Naruto/Naruto T02.cbz")
+        ohara.mark_read(["Naruto/Naruto T01.cbz"], False)
+        self.assertNotIn("Naruto/Naruto T01.cbz", ohara.load_state()["progress"])
+        with self.assertRaises(KeyError):
+            ohara.mark_read(["../x"], True)
+
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
@@ -631,6 +648,9 @@ class Http(Reading):
         code, head, _ = self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")
         self.assertEqual(code, 200)
         self.assertIn("image/jpeg", head)
+        with mock.patch.object(ohara, "mark_read", return_value={"ok": True}) as mark:
+            self.assertEqual(self.call("POST", "/api/read", {"vols": ["a", 3], "read": 1})[0], 200)
+        mark.assert_called_once_with(["a"], True)
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
         cancel.assert_called_once_with("H")

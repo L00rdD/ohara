@@ -1025,6 +1025,23 @@ def save_progress(vid, page, count):
     update_state(note)
 
 
+def mark_read(vids, read):
+    """Marks volumes as read (at their last page) or back to unread. The time of
+    reading is kept, so marking a volume does not make it the one on the lectern."""
+    paths = {vid: volume_path(vid) for vid in vids}
+
+    def change(state):
+        for vid, path in paths.items():
+            if not read:
+                state["progress"].pop(vid, None)
+                continue
+            count = len(pages(path)) if path.suffix.lower() in READABLE else 1
+            at = state["progress"].get(vid, {}).get("at", 0)
+            state["progress"][vid] = {"page": max(0, count - 1), "pages": count, "at": at}
+    update_state(change)
+    return {"ok": True}
+
+
 def status():
     """The home page's card."""
     lib = library()
@@ -1203,6 +1220,11 @@ def post_mood(h):
     h.send(200, set_mood(b["series"], b.get("name"), b.get("tracks") or []))
 
 
+def post_read(h):
+    b = h.body()
+    h.send(200, mark_read([v for v in b.get("vols", []) if isinstance(v, str)], bool(b.get("read"))))
+
+
 def post_cancel(h):
     cancel(h.body()["hash"])
     h.send(200, {"ok": True})
@@ -1224,7 +1246,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/cancel": post_cancel}
 
 
 def main():

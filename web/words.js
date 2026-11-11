@@ -159,11 +159,35 @@ const Words = (() => {
     return [pageUrl(v.id, first), first + 1 < count ? pageUrl(v.id, first + 1) : null];
   }
 
-  // what a bay's plaque says: the series, and which tomes when it takes several bays
+  // how much of a series is read: volumes done, started, still to read
+  function readCounts(s) {
+    const done = s.volumes.filter((v) => v.done).length;
+    const started = s.volumes.filter((v) => v.pages && !v.done).length;
+    return { done, started, unread: s.volumes.length - done - started, total: s.volumes.length };
+  }
+
+  // what a bay's plaque says: the series, how much is read, and which tomes when it
+  // takes several bays
   function plaqueText(bay) {
     const s = bay.series;
-    const sub = bay.parts > 1 && bay.span ? W().tomes(bay.span[0], bay.span[1]) : W().volumes(s.volumes.length);
+    const c = readCounts(s);
+    const whole = c.done ? W().readOf(c.done, c.total) : W().volumes(c.total);
+    const sub = bay.parts > 1 && bay.span ? W().tomes(bay.span[0], bay.span[1]) : whole;
     return { title: s.name, sub: sub + (s.follow && bay.part === 0 ? ` · ${W().followed}` : "") };
+  }
+
+  // the volumes of a series up to v (its number, or its place when it has none)
+  function upTo(s, v) {
+    const at = s.volumes.indexOf(v);
+    return s.volumes.filter((x, i) => (v.number && x.number ? x.number <= v.number : i <= at)).map((x) => x.id);
+  }
+
+  // the volume the lectern shows: the last one read, or the next one when it is finished
+  function lecternVolume(last, series) {
+    if (!last || !last.done) return last;
+    const s = series.find((x) => x.name === last.series);
+    const next = s && s.volumes.find((v) => v.readable && !v.done && (!last.number || !v.number || v.number > last.number));
+    return next ? { ...next, page: 0, series: s.name, meta: s.meta } : last;
   }
 
   // what is said under the lectern of the place selected on a shelf
@@ -204,7 +228,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

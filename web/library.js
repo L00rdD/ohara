@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -202,11 +202,12 @@ const Ohara = (() => {
   // ---- the lectern ----
   function drawLectern() {
     const box = $("lectern");
-    const state = lecternState(lib.last, lib.series);
+    const shown = lecternVolume(lib.last, lib.series);
+    const state = lecternState(shown, lib.series);
     box.style.setProperty("--lw", bySize(260, 320, 340) + "px");
     box.hidden = state === "hidden";
     if (state === "empty") drawInvitation(box);
-    if (state === "reading") drawOpenBook(box, lib.last);
+    if (state === "reading") drawOpenBook(box, shown);
   }
 
   function drawInvitation(box) {
@@ -262,125 +263,10 @@ const Ohara = (() => {
     return row;
   }
 
-  // ---- a series' sheet ----
-  function tomeTile(v) {
-    const look = tileLook(v);
-    const a = el("a", look.cls);
-    a.href = openUrl(v);
-    const cv = el("span", "cv");
-    if (look.cover) cv.style.backgroundImage = `url("${coverUrl(v.id)}")`;
-    if (look.bar !== null) cv.append(bar(look.bar));
-    a.append(cv, el("b", "", volumeName(v)), el("small", look.state, readingState(v)));
-    return a;
-  }
-
-  function followSwitch(s) {
-    const sw = el("button", "switch");
-    sw.type = "button";
-    sw.setAttribute("role", "switch");
-    sw.setAttribute("aria-checked", String(s.follow));
-    sw.title = W().followHint;
-    sw.append(el("span", "knob"), el("span", "", W().followSeries));
-    sw.onclick = async () => {
-      s.follow = !s.follow;
-      sw.setAttribute("aria-checked", String(s.follow));
-      await api("/api/follow", { series: s.name, follow: s.follow });
-      load();
-    };
-    return sw;
-  }
-
-  function gaps(s) {
-    const box = el("div");
-    if (s.coming && s.coming.length) box.append(el("p", "note", W().coming(tomesWord(s.coming))));
-    if (!s.missing.length) return box;
-    box.append(el("p", "note", W().missing(tomesWord(s.missing))));
-    const get = button(W().fetchMissing, "button", async () => {
-      get.disabled = true;
-      get.textContent = W().fetching;
-      try {
-        get.replaceWith(el("p", "done-note", completeText(await api("/api/complete", { series: s.name }))));
-        load();
-      } catch (err) {
-        get.disabled = false;
-        get.textContent = W().fetchMissing;
-        box.append(el("p", "error", err.message));
-      }
-    });
-    box.append(get);
-    return box;
-  }
-
-  // a series' music on its sheet: what Brook did, and a way to ask him or pick another
-  function musicBox(s) {
-    const box = el("div", "music-box");
-    api("/api/music?series=" + encodeURIComponent(s.name)).then((m) => drawMusic(box, s, m), () => {});
-    return box;
-  }
-
-  function drawMusic(box, s, m) {
-    const tracks = m.albums.reduce((n, a) => n + a.tracks.length, 0);
-    const said = tracks ? `♪ ${m.albums.length} ${W().albumsTitle.toLowerCase()}, ${W().trackCount(tracks)}` : Music.brookSays(m.status, s.name, W());
-    const acts = el("div", "actions");
-    if (["none", "notfound", "error"].includes(m.status.state) && !tracks) acts.append(button(W().askBrook, "button", () => askBrook(s, box)));
-    acts.append(button(W().otherSoundtrack, "button", () => soundtracks(s, box)));
-    box.replaceChildren(el("p", "note", said), acts);
-  }
-
-  async function askBrook(s, box) {
-    box.replaceChildren(el("p", "note", Music.brookSays({ state: "searching" }, s.name, W())));
-    const status = await api("/api/music", { series: s.name });
-    box.replaceChildren(el("p", "note", Music.brookSays(status, s.name, W())));
-    load();
-  }
-
-  // the soundtracks the indexers have for a series, to pick one
-  async function soundtracks(s, box) {
-    box.replaceChildren(el("p", "note", Music.brookSays({ state: "searching" }, s.name, W())));
-    const found = await api("/api/soundtracks?series=" + encodeURIComponent(s.name)).catch(() => []);
-    const list = el("ul", "picks");
-    list.append(...found.slice(0, 8).map((r) => soundtrackRow(s, box, r)));
-    box.replaceChildren(found.length ? list : el("p", "note", Music.brookSays({ state: "notfound" }, s.name, W())));
-  }
-
-  function soundtrackRow(s, box, r) {
-    const li = el("li");
-    const text = el("div");
-    text.append(el("span", "", r.title), el("small", "", describe(r)));
-    li.append(text, button(W().get, "button", () => pickSoundtrack(s, box, r)));
-    return li;
-  }
-
-  async function pickSoundtrack(s, box, r) {
-    await api("/api/music", { series: s.name, token: r.token });
-    box.replaceChildren(el("p", "done-note", Music.brookSays({ state: "downloading" }, s.name, W())));
-    load();
-  }
-
-
-
   function openSeries(s, i) {
     const g = geometry();
     if (R.front(rot, g.count) !== i) return turnTo(R.rotationFor(i, rot, g.count));
-    const sheet = $("series");
-    const v = nextToRead(s);
-    const read = el("a", "button main", readLabel(v));
-    read.href = openUrl(v);
-    const head = el("div", "sheet-head");
-    const img = el("img");
-    img.alt = "";
-    img.src = s.meta.cover || coverUrl(s.volumes[0].id);
-    const text = el("div");
-    const acts = el("div", "actions");
-    acts.append(read, followSwitch(s));
-    const facts = el("p", "facts");
-    facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
-    text.append(el("h2", "", s.name), facts, acts, gaps(s), musicBox(s));
-    head.append(img, text);
-    const grid = el("div", "tomes");
-    grid.append(...s.volumes.map(tomeTile));
-    sheet.replaceChildren(button("✕", "round close", () => closeSheet(sheet)), head, grid);
-    sheet.hidden = false;
+    Sheet.open(s);
   }
   function closeSheet(sheet) {
     sheet.hidden = true;
@@ -459,6 +345,7 @@ const Ohara = (() => {
       return;
     }
     draw();
+    Sheet.refresh(lib.series);
     clearTimeout(timer);
     timer = setTimeout(load, lib.downloads.length ? 5000 : 60000);
   }
@@ -491,6 +378,7 @@ const Ohara = (() => {
     $("open-settings").onclick = Settings.open;
     Settings.init({ spineStyle: () => spineStyle, setSpineStyle: (style) => ((spineStyle = style), drawRotunda()), setLanguage, closeSheet });
     Search.init({ series: () => lib.series, reload: load });
+    Sheet.init({ reload: load, closeSheet });
     $("open-contents").onclick = openContents;
     api("/api/settings").then((st) => {
       spineStyle = st.spines;

@@ -215,6 +215,20 @@ button { font: inherit; color: inherit; }
 .spine-choice .vol { height: 100%; width: 24px; cursor: inherit; }
 .spine-choice small { color: var(--muted); }
 
+/* the reading of a series and of each volume */
+.reading { margin: 12px 0 4px; max-width: 520px; }
+.reading .note { margin: 0 0 6px; }
+.reading .bar { height: 5px; background: rgba(244,232,204,.15); margin-bottom: 10px; }
+.reading .bar i { background: var(--leaf); }
+.tome-wrap { position: relative; }
+.tome-more { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(20,12,6,.7); color: var(--text); font-size: 18px; line-height: 1; cursor: pointer; }
+.tome-more:hover, .tome-more:focus-visible { background: rgba(20,12,6,.9); }
+.tome-menu { position: absolute; z-index: 3; top: 40px; right: 6px; display: grid; min-width: 170px; padding: 6px; border-radius: 6px; background: var(--paper); box-shadow: 0 12px 26px rgba(0,0,0,.5); }
+.tome-menu button { padding: 9px 10px; border: 0; border-radius: 4px; background: none; color: var(--ink); text-align: left; cursor: pointer; font: 14px var(--body); }
+.tome-menu button:hover { background: rgba(90,60,30,.12); }
+/* a volume read: a gilt tick on its spine */
+.vol.done:not(.face) .vn::after { content: "✓"; display: block; margin-top: 3px; color: #e8c77a; font-size: 10px; }
+
 /* settings */
 .option { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(244,232,204,.08); }
 .option input { width: 18px; height: 18px; accent-color: var(--leaf); }
