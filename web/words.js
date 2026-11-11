@@ -219,6 +219,11 @@ const Words = (() => {
     return W().decors[decor.split(":")[0]];
   }
 
+  // how far Franky has gone through the library, and the room he made
+  function lighterText(l) {
+    return l.done ? W().lighterProgress(l.done, l.total, size(l.saved)) : W().lighterNone(l.total);
+  }
+
   // what the card of a place selected on a shelf offers: a volume can be read, marked
   // read (or back to unread when it is read) and lead to its series' sheet; a missing
   // tome only to the sheet, where it can be fetched
@@ -258,7 +263,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

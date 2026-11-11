@@ -665,7 +665,7 @@ class Reading(Library):
         self.assertEqual((small.size, small.mode), ((900, 1300), "RGB"))
         r, g, b = Image.open(io.BytesIO(ohara.size_page(path, 2, 800))).convert("RGB").getpixel((5, 5))
         self.assertGreater(r - g, 100)  # a page in colour keeps it
-        self.assertTrue(ohara.looks_grey(Image.new("1", (4, 4))))
+        self.assertTrue(ohara.franky.looks_grey(Image.new("1", (4, 4))))
         with mock.patch.object(ohara, "page_bytes", side_effect=AssertionError("not again")):
             self.assertEqual(ohara.size_page(path, 0, 1200), made)  # from memory
             ohara.page_memory.clear()
@@ -724,7 +724,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}})
 
 
 class Http(Reading):
@@ -804,8 +804,10 @@ class Http(Reading):
             self.assertEqual(json.loads(self.call("GET", "/api/indexers")[2]), [{"name": "X"}])
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
-        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True})
-        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False})[2]), {"spines": "sobre", "brook": False})
+        lighter = {"done": 0, "total": 3, "saved": 0}
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": True, "lighter": lighter})
+        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False, "franky": False})[2]),
+                         {"spines": "sobre", "brook": False, "franky": False, "lighter": lighter})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
         ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
         with mock.patch.object(ohara, "warm") as warm:
@@ -1064,9 +1066,134 @@ class Robin(Library):
         self.assertEqual(ohara.load_state()["spines"], {})
 
     def test_spine_style_setting(self):
-        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True})
+        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": True})
         self.assertEqual(ohara.set_settings({"spines": "reliure"})["spines"], "reliure")
-        self.assertEqual(ohara.set_settings({"spines": "neon", "brook": "yes"}), {"spines": "reliure", "brook": True})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
+        ohara.set_settings({"spines": "neon", "brook": "yes", "franky": "no"})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
+
+
+class Franky(Library):
+    """Each volume rebuilt lighter, in WebP."""
+
+    def volume(self, name, pages, extra=()):
+        from PIL import Image
+        path = self.root / "Manga" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(path, "w") as z:
+            for page, colour in pages:
+                b = io.BytesIO()
+                img = Image.effect_noise((600, 900), 60).convert("RGB")
+                if colour:
+                    img = Image.merge("RGB", (img.getchannel(0), Image.new("L", img.size, 30), Image.new("L", img.size, 200)))
+                img.save(b, "JPEG" if page.endswith(".jpg") else "PNG", quality=97)
+                z.writestr(page, b.getvalue())
+            for name_, data in extra:
+                z.writestr(name_, data)
+        os.utime(path, (1000, 1000))
+        return path
+
+    def test_a_volume_rebuilt_lighter_in_webp(self):
+        from PIL import Image
+        path = self.volume("Manga T01.cbz", [("001.jpg", False), ("002.png", True)], [("ComicInfo.xml", b"<x/>")])
+        sizes = ohara.franky.rebuild(path)
+        self.assertLess(sizes["after"], sizes["before"] * 0.9)
+        self.assertEqual(sizes["after"], path.stat().st_size)
+        self.assertEqual(path.stat().st_mtime, 1000)  # not a new volume
+        with zipfile.ZipFile(path) as z:
+            self.assertEqual(z.namelist(), ["001.webp", "002.webp", "ComicInfo.xml"])
+            self.assertEqual(z.read("ComicInfo.xml"), b"<x/>")
+            r, g, blue = Image.open(io.BytesIO(z.read("002.webp"))).convert("RGB").getpixel((1, 1))
+            self.assertGreater(blue - g, 120)  # colour kept
+        self.assertTrue(ohara.franky.done(path))
+        self.assertEqual([p.name for p in path.parent.iterdir()], ["Manga T01.cbz"])  # nothing left beside
+        self.assertEqual(ohara.pages(path), ["001.webp", "002.webp"])
+
+    def test_a_volume_already_squeezed_is_not_rebuilt(self):
+        path = self.volume("Manga T04.cbz", [("001.jpg", False), ("002.jpg", False)])
+        before = path.read_bytes()
+        with mock.patch.object(ohara.franky, "page", return_value=None), mock.patch.object(ohara.franky, "write") as write:
+            self.assertEqual(ohara.franky.rebuild(path), {"before": len(before), "after": len(before)})
+        write.assert_not_called()
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_a_volume_lighter_when_tried_but_not_once_written_is_left(self):
+        path = self.volume("Manga T05.cbz", [("001.jpg", False)])
+        before = path.read_bytes()
+        with mock.patch.object(ohara.franky, "promising", return_value=True), mock.patch.object(ohara.franky, "page", return_value=None):
+            self.assertEqual(ohara.franky.rebuild(path), {"before": len(before), "after": len(before)})
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([p.name for p in path.parent.iterdir()], ["Manga T05.cbz"])
+
+    def test_a_volume_not_worth_it_is_left_as_it_is(self):
+        path = self.volume("Manga T02.cbz", [])
+        with zipfile.ZipFile(path, "a") as z:
+            z.writestr("001.webp", b"already light")
+        before = path.read_bytes()
+        self.assertEqual(ohara.franky.rebuild(path), {"before": len(before), "after": len(before)})
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(ohara.franky.done(path))
+
+    def test_a_page_not_lighter_stays(self):
+        from PIL import Image
+        b = io.BytesIO()
+        Image.effect_noise((300, 300), 90).convert("RGB").save(b, "JPEG", quality=5)  # already squeezed hard
+        self.assertIsNone(ohara.franky.page(b.getvalue()))
+        b = io.BytesIO()
+        see_through = Image.effect_noise((300, 300), 60).convert("RGBA")
+        see_through.putalpha(128)
+        see_through.save(b, "PNG")
+        self.assertEqual(Image.open(io.BytesIO(ohara.franky.page(b.getvalue()))).mode, "RGBA")  # transparency kept
+
+    def test_a_volume_that_does_not_check_out_is_left(self):
+        path = self.volume("Manga T03.cbz", [("001.jpg", False)])
+        before = path.read_bytes()
+        with mock.patch.object(ohara.franky, "check", side_effect=ValueError("not as written")), self.assertRaises(ValueError):
+            ohara.franky.rebuild(path)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual([p.name for p in path.parent.iterdir()], ["Manga T03.cbz"])
+        with zipfile.ZipFile(path, "a") as z:
+            z.writestr("broken.webp", b"not a page")
+        with self.assertRaises(Exception):
+            ohara.franky.check(path, ohara.zipfile.ZipFile(path).namelist())
+
+    def test_franky_goes_through_the_library(self):
+        first = self.volume("Manga T01.cbz", [("001.jpg", False)])
+        read = self.volume("Manga T02.cbz", [("001.jpg", False)])
+        broken = self.root / "Manga" / "Manga T03.cbz"
+        broken.write_bytes(b"not a zip")
+        ohara.save_progress("Manga/Manga T02.cbz", 0, 1)  # being read: left for later
+        ohara.pages(first)
+        self.assertEqual(ohara.franky_progress(), {"done": 0, "total": 3, "saved": 0})
+        self.assertTrue(ohara.franky_one())
+        self.assertEqual(ohara.pages(first), ["001.webp"])  # its pages read again
+        self.assertTrue(ohara.franky_one())  # the broken one, noted and left
+        self.assertFalse(ohara.franky_one())
+        seen = ohara.load_state()["franky"]
+        self.assertEqual(sorted(seen), ["Manga/Manga T01.cbz", "Manga/Manga T03.cbz"])
+        self.assertEqual(seen["Manga/Manga T03.cbz"], [0, 0])
+        progress = ohara.franky_progress()
+        self.assertEqual((progress["done"], progress["total"]), (2, 3))
+        self.assertGreater(progress["saved"], 0)
+        state = ohara.load_state()
+        state["progress"]["Manga/Manga T02.cbz"]["at"] = 0
+        ohara.save_state(state)
+        with mock.patch.object(ohara.franky, "done", return_value=True):  # already rebuilt
+            self.assertTrue(ohara.franky_one())
+        self.assertEqual(ohara.load_state()["franky"]["Manga/Manga T02.cbz"], [read.stat().st_size] * 2)
+
+    def test_franky_rests_when_all_is_done_or_he_is_off(self):
+        calls = []
+        with mock.patch.object(ohara.os, "nice"), mock.patch.object(ohara, "franky_one", side_effect=[True, OSError("disk")]), \
+                mock.patch.object(ohara.time, "sleep", side_effect=lambda s: calls.append(s) if len(calls) < 2 else (_ for _ in ()).throw(StopIteration)):
+            with self.assertRaises(StopIteration):
+                ohara.franky_loop()
+        self.assertEqual(calls, [1, ohara.FRANKY_REST])
+        ohara.set_settings({"franky": False})
+        with mock.patch.object(ohara.os, "nice"), mock.patch.object(ohara, "franky_one") as one, \
+                mock.patch.object(ohara.time, "sleep", side_effect=StopIteration), self.assertRaises(StopIteration):
+            ohara.franky_loop()
+        one.assert_not_called()
 
 
 def mp3(title):
@@ -1303,7 +1430,7 @@ class Main(Library):
     def test_main_starts_the_watch_and_the_server(self):
         with mock.patch.object(ohara.threading, "Thread") as thread, mock.patch.object(ohara, "ThreadingHTTPServer") as server:
             ohara.main()
-        self.assertEqual(thread.return_value.start.call_count, 2)
+        self.assertEqual(thread.return_value.start.call_count, 3)
         server.return_value.serve_forever.assert_called_once()
         self.assertTrue((self.root / ".incoming").is_dir())
 

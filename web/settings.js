@@ -1,9 +1,9 @@
-// The settings: the interface's language, the style of spines, Brook, and where to
-// search (Prowlarr's indexers). library.js gives what they change on the page.
+// The settings: the interface's language, the style of spines, Brook, Franky, and where
+// to search (Prowlarr's indexers). library.js gives what they change on the page.
 const Settings = (() => {
   const { $, el, button, api } = UI;
   const W = () => I18n.words();
-  const { indexerNotes } = Words;
+  const { indexerNotes, lighterText } = Words;
   let ctx = { spineStyle: () => "tome", setSpineStyle: () => {}, setLanguage: () => {}, closeSheet: () => {} };
 
   async function openSettings() {
@@ -20,6 +20,7 @@ const Settings = (() => {
     sheet.replaceChildren(button("✕", "round close", () => ctx.closeSheet(sheet)), el("h2", "", W().settings), el("h3", "", W().language), langs,
       el("h3", "", W().spinesTitle), el("p", "note", W().spinesHint), spineChoices(),
       el("h3", "", W().music), el("p", "note", W().brookHint), brookSwitch(),
+      el("h3", "", W().lighterTitle), el("p", "note", W().frankyHint), ...frankySwitch(),
       el("h3", "", W().indexers), el("p", "note", W().indexersHint), list);
     const add = el("a", "button", W().addIndexer);
     add.href = `http://${location.hostname}:9696/`;
@@ -74,15 +75,27 @@ const Settings = (() => {
     }));
   }
 
-  function brookSwitch() {
+  // a switch for one of the settings that are on or off
+  function settingSwitch(key, label, shown = () => {}) {
     const sw = el("button", "switch");
     sw.type = "button";
     sw.setAttribute("role", "switch");
-    sw.append(el("span", "knob"), el("span", "", W().brookSetting));
-    const show = (st) => sw.setAttribute("aria-checked", String(st.brook));
+    sw.append(el("span", "knob"), el("span", "", label));
+    const show = (st) => {
+      sw.setAttribute("aria-checked", String(st[key]));
+      shown(st);
+    };
     api("/api/settings").then(show, () => {});
-    sw.onclick = () => api("/api/settings", { brook: sw.getAttribute("aria-checked") !== "true" }).then(show);
+    sw.onclick = () => api("/api/settings", { [key]: sw.getAttribute("aria-checked") !== "true" }).then(show);
     return sw;
+  }
+
+  const brookSwitch = () => settingSwitch("brook", W().brookSetting);
+
+  // Franky, and how far he has gone through the library
+  function frankySwitch() {
+    const said = el("p", "note");
+    return [settingSwitch("franky", W().frankySetting, (st) => (said.textContent = lighterText(st.lighter))), said];
   }
 
   return { init: (context) => (ctx = context), open: openSettings };

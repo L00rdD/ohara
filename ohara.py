@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import brook  # noqa: E402
+import franky  # noqa: E402
 import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
                    speed, tome_range, volume_label, volume_number)
@@ -67,7 +68,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods"):
+    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky"):
         state.setdefault(key, {})
     return state
 
@@ -721,17 +722,88 @@ def read_spines(limit=10):
 
 def settings():
     st = load_state()["settings"]
-    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True)}
+    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", True)}
+
+
+def settings_page():
+    """The settings, and how far Franky has gone through the library."""
+    return {**settings(), "lighter": franky_progress()}
 
 
 def set_settings(changes):
     def change(state):
         if changes.get("spines") in SPINE_STYLES:
             state["settings"]["spines"] = changes["spines"]
-        if isinstance(changes.get("brook"), bool):
-            state["settings"]["brook"] = changes["brook"]
+        for key in ("brook", "franky"):
+            if isinstance(changes.get(key), bool):
+                state["settings"][key] = changes[key]
     update_state(change)
-    return settings()
+    return settings_page()
+
+
+# ---------- Franky: every volume rebuilt lighter, one after the other ----------
+
+FRANKY_REST = 300  # seconds before looking again, once every volume is done
+FRANKY_BUSY = 3600  # a volume opened within this is left for later
+
+
+def library_volumes():
+    """Every .cbz of the library, series after series."""
+    for name in sorted(library_names(), key=natural):
+        yield from (p for p in volumes(MANGA / name) if p.suffix.lower() in READABLE)
+
+
+def franky_next(state):
+    """The next volume Franky has not seen, leaving those being read."""
+    now = time.time()
+    for path in library_volumes():
+        vid = volume_id(path)
+        if vid not in state["franky"] and now - state["progress"].get(vid, {}).get("at", 0) > FRANKY_BUSY:
+            return path
+    return None
+
+
+def franky_one():
+    """Rebuilds the next volume lighter (see franky.py) and notes its sizes before and
+    after; a volume he fails on is noted too, not to be tried again. False when there
+    is none left."""
+    path = franky_next(load_state())
+    if not path:
+        return False
+    vid = volume_id(path)
+    try:
+        size = path.stat().st_size
+        sizes = [size, size] if franky.done(path) else list(franky.rebuild(path).values())
+        print(f"franky {vid}: {sizes[0] // 2**20} → {sizes[1] // 2**20} MB", flush=True)
+    except Exception as e:  # a broken archive: left as it is
+        sizes = [0, 0]
+        print(f"franky {vid}: {e}", flush=True)
+    for key in [k for k in pages_cache if k[0] == str(path)]:
+        pages_cache.pop(key, None)  # its pages have new names, at the same date
+
+    def change(state):
+        state["franky"][vid] = sizes
+    update_state(change)
+    return True
+
+
+def franky_progress():
+    seen = load_state()["franky"]
+    vids = [volume_id(p) for p in library_volumes()]
+    done = [seen[v] for v in vids if v in seen]
+    return {"done": len(done), "total": len(vids), "saved": sum(a - b for a, b in done)}
+
+
+def franky_loop():
+    """Franky works in the background, at a low priority, a volume after the other."""
+    os.nice(10)  # only this thread, on Linux
+    while True:
+        try:
+            busy = settings()["franky"] and franky_one()
+        except Exception as e:
+            print("franky:", e, flush=True)
+            busy = False
+        time.sleep(1 if busy else FRANKY_REST)
 
 
 # ---------- Brook: the music of each series ----------
@@ -1153,15 +1225,6 @@ def sized_dir(path, w):
     return STATE_DIR / "pages" / f"{hashlib.sha1(volume_id(path).encode()).hexdigest()}-{w}"
 
 
-def looks_grey(img):
-    """Black and white, even when kept in colour (most scans are): no dot of a small
-    copy strays far from grey."""
-    if img.mode in ("1", "L", "LA"):
-        return True
-    dots = img.convert("RGB").resize((40, 60)).tobytes()
-    return all(max(dots[i:i + 3]) - min(dots[i:i + 3]) < 28 for i in range(0, len(dots), 3))
-
-
 def page_lock(key):
     """One lock per page, so the reader and the making ahead never make it twice."""
     with page_locks_guard:
@@ -1204,7 +1267,7 @@ def make_page(path, n, w, out):
     img = Image.open(io.BytesIO(data))
     if img.width > w:
         img.draft(img.mode, (w, img.height * w // img.width))
-    img = img.convert("L" if looks_grey(img) else "RGB")
+    img = img.convert("L" if franky.looks_grey(img) else "RGB")
     img.thumbnail((w, img.height))
     out.parent.mkdir(parents=True, exist_ok=True)
     buf = io.BytesIO()
@@ -1549,7 +1612,7 @@ GET_ROUTES = {
     "/api/soundtracks": get_soundtracks,
     "/api/track": get_track,
     "/api/art": get_art,
-    "/api/settings": lambda h: h.send(200, settings()),
+    "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
 POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/cancel": post_cancel}
@@ -1560,6 +1623,7 @@ def main():
     INCOMING.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=refresh_meta, daemon=True).start()
     threading.Thread(target=watch, daemon=True).start()
+    threading.Thread(target=franky_loop, daemon=True).start()
     print(f"Ohara on port {PORT}, library in {MANGA}", flush=True)
     ThreadingHTTPServer(("", PORT), Handler).serve_forever()
 

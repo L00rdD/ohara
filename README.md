@@ -78,6 +78,13 @@ Tree of Knowledge.
   The reader then fetches the whole volume in the background and keeps it in memory,
   so turning a page does not wait on the network; near the end, the next volume gets
   ready. A page shows only once it is whole, the one before stays until then.
+- **Franky, the shipwright.** In the background, one volume after the other, Franky
+  remakes each `.cbz`'s pages in WebP at quality 85, at their own size: the difference
+  does not show, the room saved does (about 40 % on a black and white series). A few
+  pages tried first tell whether a volume is worth it; a series already well squeezed
+  is left as it is. The new volume is written under a hidden name, checked, and only
+  then replaces the original, which is gone. The volumes being read wait; he can be
+  switched off in the settings, which say how far he has gone.
 - **French or English.** The flag in the header switches the interface; the choice
   is kept in the browser.
 - **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,
@@ -141,7 +148,8 @@ Python 3 with only the standard library, plus Pillow for the covers; plain HTML,
 and JavaScript for the pages: `i18n.js` (the words in French and English),
 `words.js` (what is said and shown, decided from the data), `rotunda.js` (the
 rotunda's geometry and what each bay holds), `library.js` (the page),
-`robin.py` (what a spine needs, read from a cover), `brook.py` (which soundtrack,
+`robin.py` (what a spine needs, read from a cover), `franky.py` (a volume rebuilt
+lighter), `brook.py` (which soundtrack,
 and the titles of its tracks), `ui.js`, `search.js` and `settings.js` (the drawer of
 the search and the settings), `music.js` and `player.js` (the reader's music), `sheet.js` (a series' sheet),
 `reader.js` (the reader).

@@ -314,3 +314,10 @@ test("a volume's pages fetched from the one read, then those before", () => {
   assert.equal(Reader.nearEnd(89, 100), false);
   assert.equal(Reader.nearEnd(90, 100), true);
 });
+
+test("how far Franky has gone", () => {
+  assert.equal(fr(() => Ohara.lighterText({ done: 12, total: 340, saved: 4.2e9 })), "12 tomes sur 340 vus · 4,2 Go gagnés");
+  assert.equal(fr(() => Ohara.lighterText({ done: 1, total: 340, saved: 3e6 })), "1 tome sur 340 vu · 3 Mo gagnés");
+  assert.equal(fr(() => Ohara.lighterText({ done: 0, total: 340, saved: 0 })), "Aucun des 340 tomes n'est encore passé entre ses mains.");
+  assert.equal(en(() => Ohara.lighterText({ done: 2, total: 9, saved: 5e8 })), "2 of 9 volumes seen · 500 MB saved");
+});
