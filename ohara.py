@@ -6,6 +6,7 @@ Only the standard library and Pillow (for the covers). Every setting comes from 
 environment (see README.md and docker-compose.yml)."""
 
 import base64
+import collections
 import hashlib
 import io
 import json
@@ -1127,8 +1128,10 @@ WIDTHS = (800, 1200, 1600, 2400)
 PAGES_KEPT = 12  # volumes whose pages are kept at the size of a screen
 warming = {"job": None}  # the volume being made ahead; opening another stops it
 WARMERS = 2  # pages made ahead at once
+PAGES_RAM = 128 * 1024 * 1024  # bytes of pages kept in memory: two or three volumes
 page_locks = {}
 page_locks_guard = threading.Lock()
+page_memory = collections.OrderedDict()
 
 
 def page_width(w):
@@ -1160,12 +1163,33 @@ def page_lock(key):
 
 
 def size_page(path, n, w):
-    """Page n at most w pixels wide, as a WebP kept on disk, made now if need be."""
+    """Page n at most w pixels wide, as WebP bytes: from memory, else from the disk,
+    else made now and kept on both. The library's disk is slow to read while it is busy
+    (a fraction of a second a page), so the volume read is kept in memory."""
     out = sized_dir(path, w) / f"{n}.webp"
-    with page_lock(str(out)):
-        if not out.exists():
-            make_page(path, n, w, out)
-    return out
+    key = str(out)
+    data = remembered(key)
+    if data is None:
+        with page_lock(key):
+            data = remembered(key) or (out.read_bytes() if out.exists() else make_page(path, n, w, out))
+            remember(key, data)
+    return data
+
+
+def remembered(key):
+    with page_locks_guard:
+        if key in page_memory:
+            page_memory.move_to_end(key)
+        return page_memory.get(key)
+
+
+def remember(key, data):
+    """Keeps a page in memory, letting go of those used longest ago past PAGES_RAM."""
+    with page_locks_guard:
+        page_memory[key] = data
+        page_memory.move_to_end(key)
+        while sum(len(d) for d in page_memory.values()) > PAGES_RAM:
+            page_memory.popitem(last=False)
 
 
 def make_page(path, n, w, out):
@@ -1177,9 +1201,12 @@ def make_page(path, n, w, out):
     img = img.convert("L" if looks_grey(img) else "RGB")
     img.thumbnail((w, img.height))
     out.parent.mkdir(parents=True, exist_ok=True)
+    buf = io.BytesIO()
+    img.save(buf, "WEBP", quality=75, method=2)
     tmp = out.with_suffix(".tmp")
-    img.save(tmp, "WEBP", quality=75, method=2)
+    tmp.write_bytes(buf.getvalue())
     tmp.replace(out)
+    return buf.getvalue()
 
 
 def trim_pages(keep=PAGES_KEPT):
@@ -1194,8 +1221,8 @@ def trim_pages(keep=PAGES_KEPT):
 
 def warm(path, w, start):
     """Makes a volume's pages at width w in the background, two at a time, from the
-    page the reader is at to the end, then those before; opening another volume stops
-    it."""
+    page the reader is at to the end, then those before, and brings them into memory;
+    opening another volume stops it."""
     job = object()
     warming["job"] = job
     folder = sized_dir(path, w)
@@ -1293,6 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
     # is let go after a minute
     protocol_version = "HTTP/1.1"
     timeout = 60
+    disable_nagle_algorithm = True  # a page's headers and body go out without waiting
 
     def log_message(self, *args):
         pass
@@ -1351,7 +1379,7 @@ def get_page(h):
     q = h.query()
     path, n, w = volume_path(q["vol"]), int(q.get("n", 0)), page_width(q.get("w"))
     if w:
-        data, ctype = size_page(path, n, w).read_bytes(), "image/webp"
+        data, ctype = size_page(path, n, w), "image/webp"
     else:
         data, name = page_bytes(path, n)
         ctype = TYPES.get(Path(name).suffix.lower(), "image/jpeg")

@@ -48,6 +48,7 @@ class Library(unittest.TestCase):
         self.root = root
         ohara.found_releases.clear()
         ohara.pages_cache.clear()
+        ohara.page_memory.clear()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -645,18 +646,32 @@ class Reading(Library):
                 Image.new("RGB", size, colour).save(b, "JPEG" if name.endswith("jpg") else "PNG")
                 z.writestr(name, b.getvalue())
         made = ohara.size_page(path, 0, 1200)
-        img = Image.open(made)
-        self.assertEqual((made.suffix, img.format, img.size), (".webp", "WEBP", (1200, 800)))
+        img = Image.open(io.BytesIO(made))
+        self.assertEqual((img.format, img.size), ("WEBP", (1200, 800)))
+        self.assertEqual((ohara.sized_dir(path, 1200) / "0.webp").read_bytes(), made)
         r, g, b = img.convert("RGB").getpixel((600, 400))
         self.assertTrue(r == g == b)  # grey, its stray colour gone
-        small = Image.open(ohara.size_page(path, 1, 1200))  # narrower: only in WebP
+        small = Image.open(io.BytesIO(ohara.size_page(path, 1, 1200)))  # narrower: only in WebP
         self.assertEqual((small.size, small.mode), ((900, 1300), "RGB"))
-        r, g, b = Image.open(ohara.size_page(path, 2, 800)).convert("RGB").getpixel((5, 5))
+        r, g, b = Image.open(io.BytesIO(ohara.size_page(path, 2, 800))).convert("RGB").getpixel((5, 5))
         self.assertGreater(r - g, 100)  # a page in colour keeps it
         self.assertTrue(ohara.looks_grey(Image.new("1", (4, 4))))
         with mock.patch.object(ohara, "page_bytes", side_effect=AssertionError("not again")):
-            self.assertEqual(ohara.size_page(path, 0, 1200), made)
+            self.assertEqual(ohara.size_page(path, 0, 1200), made)  # from memory
+            ohara.page_memory.clear()
+            self.assertEqual(ohara.size_page(path, 0, 1200), made)  # from the disk
         self.assertIs(ohara.page_lock("a"), ohara.page_lock("a"))
+
+    def test_the_pages_used_longest_ago_leave_memory(self):
+        ohara.page_memory.clear()
+        with mock.patch.object(ohara, "PAGES_RAM", 10):
+            ohara.remember("a", b"1234")
+            ohara.remember("b", b"1234")
+            self.assertEqual(ohara.remembered("a"), b"1234")  # a used again
+            ohara.remember("c", b"1234")
+        self.assertEqual(list(ohara.page_memory), ["a", "c"])
+        self.assertIsNone(ohara.remembered("b"))
+        ohara.page_memory.clear()
 
     def test_a_volume_is_made_ahead_from_the_page_read(self):
         path = self.root / "Naruto" / "Naruto T01.cbz"
@@ -790,9 +805,7 @@ class Http(Reading):
         with mock.patch.object(ohara, "warm") as warm:
             self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz")
         warm.assert_not_called()
-        sized = self.root / "sized.webp"
-        sized.write_bytes(b"SMALL")
-        with mock.patch.object(ohara, "size_page", return_value=sized):
+        with mock.patch.object(ohara, "size_page", return_value=b"SMALL"):
             code, head, payload = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=0&w=800")
         self.assertEqual((code, payload), (200, b"SMALL"))
         self.assertIn("image/webp", head)

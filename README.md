@@ -72,8 +72,9 @@ Tree of Knowledge.
 - **Reading.** Left to right: a click on the right half turns to the next page, on
   the left half back. One page or two side by side, fitted to the height or the
   width; the page reached is saved on the server, so another device picks it up.
-  Pages come at the width of the screen, in WebP, made once and kept in `.ohara/pages`
-  (for the last 12 volumes opened), from the page you are at as soon as a volume opens.
+  Pages come at the width of the screen, in WebP, made from the page you are at as
+  soon as a volume opens, and kept in `.ohara/pages` (for the last 12 volumes opened)
+  and in memory for the volumes being read, as the library's disk is slow when busy.
   The reader then fetches the whole volume in the background and keeps it in memory,
   so turning a page does not wait on the network; near the end, the next volume gets
   ready. A page shows only once it is whole, the one before stays until then.
