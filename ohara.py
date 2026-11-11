@@ -340,10 +340,15 @@ def transmission_headers():
 
 
 class KeepRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if newurl.startswith("magnet:"):
-            raise MagnetFound(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+    """Follows redirects, but hands back a magnet link (urllib refuses to follow one)."""
+
+    def http_error_302(self, req, fp, code, msg, headers):
+        location = headers.get("Location") or headers.get("URI") or ""
+        if location.startswith("magnet:"):
+            raise MagnetFound(location)
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
 class MagnetFound(Exception):
@@ -680,6 +685,15 @@ def set_settings(changes):
 # ---------- Brook: the music of each series ----------
 
 MUSIC_RETRY = 7 * 86400  # a series without a soundtrack is looked for again a week later
+MUSIC_ERROR_RETRY = 3600  # after a failure (Prowlarr or Transmission away), an hour later
+
+
+def music_due(status, now):
+    """Whether Brook should look for a series' music now."""
+    if not status:
+        return True
+    wait = {"notfound": MUSIC_RETRY, "error": MUSIC_ERROR_RETRY}.get(status.get("state"))
+    return wait is not None and now - status.get("at", 0) > wait
 
 
 def find_soundtracks(series):
@@ -826,14 +840,12 @@ def brook_pass():
         return None
     state = load_state()
     for series in sorted(library_names(), key=natural):
-        status = state["music"].get(series)
-        due = not status or (status.get("state") == "notfound" and time.time() - status.get("at", 0) > MUSIC_RETRY)
-        if due and not albums(series):
+        if music_due(state["music"].get(series), time.time()) and not albums(series):
             set_music(series, state="searching")
             try:
                 return grab_music(series)
-            except Exception as e:  # Prowlarr or Transmission away: try again next time
-                set_music(series, state="none")
+            except Exception as e:  # Prowlarr or Transmission away: try again in an hour
+                set_music(series, state="error")
                 print(f"brook {series}:", e, flush=True)
                 return None
     return None

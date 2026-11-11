@@ -322,7 +322,7 @@ const Ohara = (() => {
     const tracks = m.albums.reduce((n, a) => n + a.tracks.length, 0);
     const said = tracks ? `♪ ${m.albums.length} ${W().albumsTitle.toLowerCase()}, ${W().trackCount(tracks)}` : Music.brookSays(m.status, s.name, W());
     const acts = el("div", "actions");
-    if (["none", "notfound"].includes(m.status.state) && !tracks) acts.append(button(W().askBrook, "button", () => askBrook(s, box)));
+    if (["none", "notfound", "error"].includes(m.status.state) && !tracks) acts.append(button(W().askBrook, "button", () => askBrook(s, box)));
     acts.append(button(W().otherSoundtrack, "button", () => soundtracks(s, box)));
     box.replaceChildren(el("p", "note", said), acts);
   }

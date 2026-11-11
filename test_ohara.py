@@ -333,12 +333,30 @@ class Transmission(Library):
 
     def test_redirect_to_a_magnet_is_caught(self):
         h = ohara.KeepRedirect()
-        with self.assertRaises(ohara.MagnetFound):
-            h.redirect_request(None, None, 302, "", {}, "magnet:?xt=3")
-        req = mock.Mock(full_url="http://p/1", headers={}, get_method=lambda: "GET", unredirected_hdrs={}, origin_req_host="p", data=None)
-        with mock.patch("urllib.request.HTTPRedirectHandler.redirect_request", return_value="next") as up:
-            self.assertEqual(h.redirect_request(req, None, 302, "", {}, "http://p/2"), "next")
+        for code in (301, 302, 303, 307, 308):
+            with self.assertRaises(ohara.MagnetFound) as caught:
+                getattr(h, f"http_error_{code}")(None, None, code, "", {"Location": "magnet:?xt=3"})
+            self.assertEqual(str(caught.exception), "magnet:?xt=3")
+        with mock.patch("urllib.request.HTTPRedirectHandler.http_error_302", return_value="next") as up:
+            self.assertEqual(h.http_error_302(None, None, 302, "", {"Location": "http://p/2"}), "next")
         up.assert_called_once()
+
+    def test_a_real_redirect_to_a_magnet(self):
+        import http.server
+        import threading as th
+
+        class Redirect(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(301)
+                self.send_header("Location", "magnet:?xt=urn:btih:abc")
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+        server = http.server.HTTPServer(("127.0.0.1", 0), Redirect)
+        th.Thread(target=server.handle_request, daemon=True).start()
+        self.assertEqual(ohara.torrent_source(f"http://127.0.0.1:{server.server_port}/dl"), {"filename": "magnet:?xt=urn:btih:abc"})
+        server.server_close()
 
     def test_grab_adds_and_remembers(self):
         ohara.found_releases["t1"] = {"title": "Naruto [CBZ]", "series": "Naruto", "range": None, "_url": "magnet:?n"}
@@ -996,9 +1014,17 @@ class Brook(Library):
         ohara.set_music("Berserk", state="downloading")
         with mock.patch.object(ohara, "grab_music", side_effect=OSError("prowlarr away")):
             self.assertIsNone(ohara.brook_pass())
-        self.assertEqual(ohara.music_status("Frieren"), {"state": "none"})
+        self.assertEqual(ohara.music_status("Frieren"), {"state": "error"})
         ohara.set_music("Frieren", state="notfound")
         self.assertIsNone(ohara.brook_pass())
+
+    def test_when_brook_looks_again(self):
+        self.assertTrue(ohara.music_due(None, 0))
+        self.assertFalse(ohara.music_due({"state": "downloading", "at": 0}, 10 ** 9))
+        self.assertFalse(ohara.music_due({"state": "error", "at": 1000}, 1000 + 1800))
+        self.assertTrue(ohara.music_due({"state": "error", "at": 1000}, 1000 + 3601))
+        self.assertFalse(ohara.music_due({"state": "notfound", "at": 0}, 86400))
+        self.assertTrue(ohara.music_due({"state": "notfound", "at": 0}, 8 * 86400))
 
     def test_track_streaming_with_ranges(self):
         folder = self.root / ".ost" / "Frieren"

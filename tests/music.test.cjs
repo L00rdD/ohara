@@ -50,7 +50,8 @@ test("time and urls", () => {
 });
 
 test("what is said of Brook's work", () => {
-  const w = { brookSearching: (s) => `cherche ${s}`, brookDownloading: (s) => `télécharge ${s}`, brookNotFound: (s) => `rien pour ${s}`, brookNone: (s) => `rien encore pour ${s}` };
+  const w = { brookSearching: (s) => `cherche ${s}`, brookDownloading: (s) => `télécharge ${s}`, brookNotFound: (s) => `rien pour ${s}`, brookNone: (s) => `rien encore pour ${s}`, brookError: (s) => `erreur ${s}` };
+  assert.equal(M.brookSays({ state: "error" }, "OP", w), "erreur OP");
   assert.equal(M.brookSays({ state: "searching" }, "OP", w), "cherche OP");
   assert.equal(M.brookSays({ state: "downloading" }, "OP", w), "télécharge OP");
   assert.equal(M.brookSays({ state: "notfound" }, "OP", w), "rien pour OP");

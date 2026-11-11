@@ -44,7 +44,7 @@ const Music = (() => {
 
   // what is said of Brook's work on a series' music, from its status
   function brookSays(status, series, words) {
-    const say = { searching: words.brookSearching, downloading: words.brookDownloading, notfound: words.brookNotFound }[status.state];
+    const say = { searching: words.brookSearching, downloading: words.brookDownloading, notfound: words.brookNotFound, error: words.brookError }[status.state];
     return say ? say(series) : words.brookNone(series);
   }
 

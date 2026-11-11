@@ -184,7 +184,7 @@ const Player = (() => {
   function brookBox() {
     const box = el("div", "brook");
     box.append(el("p", "", Music.brookSays(music.status, series, W())));
-    if (["none", "notfound"].includes(music.status.state)) {
+    if (["none", "notfound", "error"].includes(music.status.state)) {
       box.append(button(W().askBrook, "btn main", async () => {
         music.status = await api("/api/music", { series });
         draw();
