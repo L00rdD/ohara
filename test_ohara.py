@@ -988,8 +988,13 @@ class Follow(Library):
         ohara.save_state({"followed_at": ohara.time.time()})
         self.assertFalse(ohara.follows_due())
         with mock.patch.object(ohara, "check_downloads") as downloads, mock.patch.object(ohara, "check_follows") as follows, \
-                mock.patch.object(ohara, "read_spines") as spines, mock.patch.object(ohara, "brook_pass") as brook:
+                mock.patch.object(ohara, "read_spines") as spines, mock.patch.object(ohara, "brook_pass") as brook, \
+                mock.patch.object(ohara, "chapters_pass") as wiki, mock.patch.object(ohara, "examine_due") as doctor, \
+                mock.patch.object(ohara, "backup_state") as backup:
             ohara.tick()
+        backup.assert_called_once()
+        wiki.assert_called_once()
+        doctor.assert_called_once()
         spines.assert_called_once()
         brook.assert_called_once()
         downloads.assert_called_once()
@@ -1306,6 +1311,40 @@ class Chapters(Library):
         self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
 
 
+class Backups(Library):
+    def test_a_copy_of_the_state_a_day_seven_days_kept(self):
+        ohara.backup_state("2026-11-01")  # no state yet: nothing
+        self.assertFalse((ohara.STATE_DIR / "backups").exists())
+        ohara.save_state({"progress": {"a": {"page": 3}}})
+        for day in range(1, 10):
+            ohara.backup_state(f"2026-11-{day:02d}")
+        ohara.save_state({"progress": {}})
+        ohara.backup_state("2026-11-09")  # once a day: the morning's copy stays
+        kept = sorted(p.name for p in (ohara.STATE_DIR / "backups").iterdir())
+        self.assertEqual(kept, [f"state-2026-11-{d:02d}.json" for d in range(3, 10)])
+        self.assertEqual(json.loads((ohara.STATE_DIR / "backups" / "state-2026-11-09.json").read_text())["progress"], {"a": {"page": 3}})
+
+
+class GivingUp(Library):
+    """A release that does not come, given up on, is not taken again."""
+
+    def test_a_release_given_up_is_not_taken_again(self):
+        (self.root / ".incoming" / "f1").mkdir(parents=True)
+        ohara.save_state({"downloads": {"H1": {"series": "Frieren", "title": "Frieren T01-T03 FR", "folder": "f1", "range": [1, 3]}}})
+        with mock.patch.object(ohara, "rpc") as rpc:
+            self.assertEqual(ohara.give_up("H1"), "Frieren")
+        rpc.assert_called_once_with("torrent-remove", {"ids": ["H1"], "delete-local-data": True})
+        state = ohara.load_state()
+        self.assertEqual((state["downloads"], state["series"]["Frieren"]["skipped"]), ({}, ["Frieren T01-T03 FR"]))
+        self.assertFalse((self.root / ".incoming" / "f1").exists())
+        with self.assertRaises(KeyError):
+            ohara.give_up("H1")
+        dead = {"title": "Frieren T01-T03 FR", "lang": "FR", "range": (1, 3), "seeders": 9, "size": 1}
+        other = {"title": "Frieren - T01 à T03 FR", "lang": "FR", "range": (1, 3), "seeders": 2, "size": 2}
+        picks, nowhere = ohara.plan("Frieren", [dead, other], ohara.load_state(), 3)
+        self.assertEqual(([r["title"] for r in picks], nowhere), (["Frieren - T01 à T03 FR"], []))
+
+
 class Chopper(Library):
     """What ails the library, and the remedies."""
 
@@ -1370,8 +1409,10 @@ class Chopper(Library):
             return {"said": "done"}
 
         with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            self.assertEqual(ohara.ailments(), [])  # never examined on the page's own asking
+            ohara.examine_due()
             self.assertEqual(len(ohara.ailments()), 1)
-            ohara.ailments()  # kept a minute
+            ohara.examine_due()  # kept a while
             self.assertEqual(len(seen), 1)
             snap = seen[0]
             self.assertEqual([f["name"] for f in snap["files"]["Naruto"]], ["Naruto T01.cbz", "notes.txt"])

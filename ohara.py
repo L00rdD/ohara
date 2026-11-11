@@ -82,6 +82,26 @@ def save_state(state):
     tmp.replace(STATE_DIR / "state.json")
 
 
+BACKUPS_KEPT = 7  # days of the state kept in .ohara/backups
+
+
+def backup_state(today=None):
+    """Once a day, a copy of the state (where you are in each volume, every choice made)
+    in .ohara/backups, the last BACKUPS_KEPT days kept: a state emptied by mistake can
+    be put back by hand."""
+    src = STATE_DIR / "state.json"
+    if not src.exists():
+        return
+    folder = STATE_DIR / "backups"
+    out = folder / f"state-{today or time.strftime('%Y-%m-%d')}.json"
+    if out.exists():
+        return
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, out)
+    for old in sorted(folder.glob("state-*.json"))[:-BACKUPS_KEPT]:
+        old.unlink()
+
+
 def update_state(change):
     """Applies change(state) under the lock and saves the result."""
     with lock:
@@ -573,10 +593,12 @@ def cost(r, need):
 def plan(series, releases, state, total=None):
     """The releases to download so that the series has every tome from 1 to the last
     one out (the most AniList counts or a French release holds): each pick is the
-    cheapest per missing tome (see cost), until nothing more helps.
+    cheapest per missing tome (see cost), until nothing more helps; a release given
+    up on before (see give_up) is not taken again.
     Returns (releases, tomes still nowhere to be found)."""
     french = [r for r in releases if r["lang"] == "FR" and r["range"]]
-    usable = [r for r in french if r["seeders"] > 0]
+    skipped = set(state.get("series", {}).get(series, {}).get("skipped", []))
+    usable = [r for r in french if r["seeders"] > 0 and r["title"] not in skipped]
     # a tome out with nobody sharing it yet still counts as out
     last = max([total or 0] + [r["range"][1] for r in french])
     have = {int(n) for n in owned_numbers(MANGA / series)} | coming_tomes(series, state)
@@ -634,6 +656,23 @@ def complete(series):
     return {"sent": [{"title": r["title"], "range": r["range"]} for r in picks], "nowhere": nowhere}
 
 
+def give_up(torrent_hash):
+    """Drops a download that does not come, and remembers its release not to take it
+    again for its series. Returns the series."""
+    d = load_state()["downloads"].get(torrent_hash)
+    if not d:
+        raise KeyError(torrent_hash)
+    cancel(torrent_hash)
+    if d.get("folder"):
+        shutil.rmtree(INCOMING / d["folder"], ignore_errors=True)
+
+    def change(state):
+        entry = series_entry(state, d["series"])
+        entry["skipped"] = sorted(set(entry.get("skipped", [])) | {d["title"]})
+    update_state(change)
+    return d["series"]
+
+
 def complete_later(series):
     threading.Thread(target=safe_complete, args=(series,), daemon=True).start()
 
@@ -661,10 +700,12 @@ def follows_due():
 
 
 def tick():
+    backup_state()
     check_downloads()
     read_spines()
     brook_pass()
     chapters_pass()
+    examine_due()
     if follows_due():
         check_follows()
 
@@ -1214,14 +1255,23 @@ def snapshot():
 
 
 ailments_seen = {"at": 0, "list": []}
-AILMENTS_FRESH = 60  # seconds an examination is kept before being made again
+AILMENTS_EVERY = 300  # seconds between two examinations in the background
 
 
 def ailments(fresh=False):
-    if fresh or time.time() - ailments_seen["at"] > AILMENTS_FRESH:
+    """The ailments found last; examined now only when asked (the 🩺 opened, a remedy
+    chosen): an examination reads every folder of the library, slow on a busy disk, so
+    the page's own loading never waits for one."""
+    if fresh:
         ailments_seen["list"] = chopper.examine(snapshot(), set(load_state()["dismissed"]))
         ailments_seen["at"] = time.time()
     return ailments_seen["list"]
+
+
+def examine_due():
+    """Examines the library in the background, every AILMENTS_EVERY."""
+    if time.time() - ailments_seen["at"] > AILMENTS_EVERY:
+        ailments(fresh=True)
 
 
 def treat(aid, index):
@@ -1503,6 +1553,9 @@ def mark_read(vids, read):
     """Marks volumes as read (at their last page) or back to unread. The time of
     reading is kept, so marking a volume does not make it the one on the lectern."""
     paths = {vid: volume_path(vid) for vid in vids}
+
+    if not read:  # said in the log: where you were is lost
+        print(f"reading: back to unread: {len(vids)} volume(s), {', '.join(sorted(vids))[:300]}", flush=True)
 
     def change(state):
         for vid, path in paths.items():

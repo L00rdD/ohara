@@ -57,15 +57,25 @@ def is_stuck(info, entry, snap):
 
 @chopper.exam
 def stuck(snap):
-    # "look for another release" is not offered: ohara.complete() would pick the very
-    # same one again, as nothing remembers that it did not come
+    """A download that does not come: cancel it, or give it up for another release of
+    the same tomes (ohara remembers the one given up on, not to take it again)."""
     found = []
     for info in snap["downloads"]:
         entry = sent(snap, info)
         if is_stuck(info, entry, snap):
-            cancel = remedy("dl-cancel", words("L'annuler", "Cancel it"), risky=True, hash=info["hash"])
-            found.append(ailment("dl-stuck", info["hash"], stuck_text(info, entry, snap), [cancel], series=info["series"]))
+            remedies = [remedy("dl-cancel", words("L'annuler", "Cancel it"), risky=True, hash=info["hash"])]
+            if info["kind"] != "ost":
+                remedies.insert(0, remedy("dl-another", words("L'annuler et en chercher un autre", "Cancel it and look for another"), risky=True, hash=info["hash"]))
+            found.append(ailment("dl-stuck", info["hash"], stuck_text(info, entry, snap), remedies, series=info["series"]))
     return found
+
+
+@chopper.cure("dl-another")
+def cure_another(o, hash):
+    """Gives a download up and looks for its tomes again, among the other releases."""
+    if hash not in o.load_state()["downloads"]:
+        return {"sent": [], "nowhere": []}
+    return o.complete(o.give_up(hash))
 
 
 # ---------- a download removed outside Ohara ----------

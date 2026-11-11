@@ -97,6 +97,10 @@ Tree of Knowledge.
   is changed without your choice, and a remedy that renames or deletes files asks to
   be touched twice. Renaming a volume or a series keeps where you are in it. Each
   family of examinations is a file of its own, `ailments_*.py`.
+- **Kept safe.** Once a day, the state (where you are in each volume, every choice
+  made) is copied to `.ohara/backups`, the last 7 days kept. A download that never
+  comes can be given up for another release of the same tomes; Ohara remembers the
+  one given up on and does not take it again.
 - **French or English.** The flag in the header switches the interface; the choice
   is kept in the browser.
 - **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,

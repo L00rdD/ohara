@@ -59,7 +59,8 @@ class Exams(unittest.TestCase):
         a = found[0]
         self.assertEqual(a["text"]["fr"], "« Jujutsu Kaisen - T01 à T17 » n'a pas commencé depuis 14 h : personne ne le partage peut-être plus.")
         self.assertEqual((a["series"], a["severity"]), ("Jujutsu Kaisen", "trouble"))
-        self.assertEqual(a["remedies"], [{"kind": "dl-cancel", "label": {"fr": "L'annuler", "en": "Cancel it"}, "risky": True, "args": {"hash": "A"}}])
+        self.assertEqual([(r["kind"], r["label"]["fr"]) for r in a["remedies"]], [("dl-another", "L'annuler et en chercher un autre"), ("dl-cancel", "L'annuler")])
+        self.assertEqual([r["kind"] for r in found[1]["remedies"]], ["dl-cancel"])  # a soundtrack: Brook looks for another himself
         self.assertEqual(found[1]["text"]["fr"], "« Pack E » est en erreur : no space.")
         self.assertIn("?", found[2]["text"]["en"])
         self.assertEqual(ids(dl.stuck(s)), ids(found))  # the same ids, examination after examination
@@ -165,6 +166,17 @@ class Cures(unittest.TestCase):
         self.cure("dl-cancel", hash="H")  # gone meanwhile: nothing more
         self.assertEqual(self.removed(), [["H"], ["H"]])
         self.assertTrue(self.root.exists())
+
+    def test_another_release_for_a_pack_that_does_not_come(self):
+        self.folder("abc")
+        ohara.save_state({"downloads": {"H": {"series": "S", "title": "S T01-T09", "folder": "abc", "range": [1, 9], "at": 1}}})
+        with mock.patch.object(ohara, "complete", return_value={"sent": [{"title": "S - T01 à T09"}], "nowhere": []}) as complete:
+            self.assertEqual(self.cure("dl-another", hash="H")["sent"], [{"title": "S - T01 à T09"}])
+            complete.assert_called_once_with("S")
+            self.assertEqual(self.cure("dl-another", hash="H"), {"sent": [], "nowhere": []})  # gone meanwhile
+        state = ohara.load_state()
+        self.assertEqual((state["downloads"], state["series"]["S"]["skipped"]), ({}, ["S T01-T09"]))
+        self.assertFalse((self.incoming / "abc").exists())
 
     def test_cancelling_a_soundtrack_lets_brook_take_another(self):
         self.folder("ost-1", ["a.mp3"])
