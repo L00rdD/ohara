@@ -912,6 +912,27 @@ def volumes(series_dir):
     return sorted(files, key=lambda p: natural(p.name))
 
 
+DECORS = ("banner", "cover", "none")
+
+
+def decor_ok(series, decor):
+    if decor.startswith("vol:"):
+        return decor[4:].startswith(series + "/") and volume_path(decor[4:]).is_file()
+    return decor in DECORS or bool(re.match(r"url:https?://\S+$", decor))
+
+
+def set_decor(series, decor):
+    """The back of a series' bays: its AniList banner (the default), its AniList cover,
+    a volume's cover ("vol:<id>"), an image from the web ("url:<address>") or bare wood."""
+    if not decor_ok(series, decor):
+        raise KeyError(decor)
+
+    def change(state):
+        series_entry(state, series)["decor"] = decor
+    update_state(change)
+    return {"ok": True}
+
+
 def library_names():
     if not MANGA.exists():
         return []
@@ -931,6 +952,7 @@ def series_info(d, state):
         "read": sum(v["done"] for v in vols),
         "new": sum(v["new"] for v in vols),
         "follow": entry.get("follow", False),
+        "decor": entry.get("decor", "banner"),
         "meta": meta,
         "missing": [n for n in range(1, last + 1) if n not in numbers and n not in coming],
         "coming": sorted(coming),
@@ -1184,6 +1206,11 @@ def post_follow(h):
     h.send(200, {"ok": True})
 
 
+def post_decor(h):
+    b = h.body()
+    h.send(200, set_decor(b["series"], str(b.get("decor", ""))))
+
+
 def post_progress(h):
     b = h.body()
     save_progress(b["vol"], b["page"], b["count"])
@@ -1288,7 +1315,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/cancel": post_cancel}
 
 
 def main():

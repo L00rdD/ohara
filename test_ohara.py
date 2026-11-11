@@ -554,6 +554,17 @@ class Reading(Library):
         with self.assertRaises(KeyError):
             ohara.mark_read(["../x"], True)
 
+    def test_the_back_of_a_series_bays(self):
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            self.assertEqual(ohara.library()["series"][0]["decor"], "banner")
+        for decor in ("cover", "none", "vol:Naruto/Naruto T02.cbz", "url:https://example.org/wall.jpg", "banner"):
+            ohara.set_decor("Naruto", decor)
+            self.assertEqual(ohara.load_state()["series"]["Naruto"]["decor"], decor)
+        for wrong in ("vol:Naruto/nope.cbz", "vol:../x", "vol:Other/Naruto T02.cbz", "url:javascript:x", "url:https://a b", "gold"):
+            with self.assertRaises(KeyError):
+                ohara.set_decor("Naruto", wrong)
+        self.assertEqual(ohara.load_state()["series"]["Naruto"]["decor"], "banner")
+
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
@@ -664,6 +675,9 @@ class Http(Reading):
         with mock.patch.object(ohara, "mark_read", return_value={"ok": True}) as mark:
             self.assertEqual(self.call("POST", "/api/read", {"vols": ["a", 3], "read": 1})[0], 200)
         mark.assert_called_once_with(["a"], True)
+        with mock.patch.object(ohara, "set_decor", return_value={"ok": True}) as decor:
+            self.assertEqual(self.call("POST", "/api/decor", {"series": "Naruto", "decor": "none"})[0], 200)
+        decor.assert_called_once_with("Naruto", "none")
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
         cancel.assert_called_once_with("H")

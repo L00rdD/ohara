@@ -232,6 +232,18 @@ button { font: inherit; color: inherit; }
 .tome-menu { position: absolute; z-index: 3; top: 40px; right: 6px; display: grid; min-width: 170px; padding: 6px; border-radius: 6px; background: var(--paper); box-shadow: 0 12px 26px rgba(0,0,0,.5); }
 .tome-menu button { padding: 9px 10px; border: 0; border-radius: 4px; background: none; color: var(--ink); text-align: left; cursor: pointer; font: 14px var(--body); }
 .tome-menu button:hover { background: rgba(90,60,30,.12); }
+/* the back of a series' shelves, picked on its sheet */
+.decor-box { margin-top: 18px; }
+.decor-box h3 { margin: 0 0 10px; font-size: 20px; }
+.decor-box .note { margin: 8px 0 0; font-size: 13px; }
+.decor-picks { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.decor-pick { display: grid; gap: 6px; justify-items: center; padding: 0; border: 0; background: none; cursor: pointer; color: var(--muted); }
+.decor-pick .swatch { width: 64px; height: 84px; border-radius: 4px; border: 2px solid transparent; background: #2a190d center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(244,232,204,.12), 0 6px 14px rgba(0,0,0,.4); }
+.decor-pick[aria-pressed="true"] { color: var(--text); }
+.decor-pick[aria-pressed="true"] .swatch { border-color: var(--lantern); }
+.decor-link { display: flex; gap: 10px; max-width: 520px; }
+.decor-link input { flex: 1; min-width: 0; padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(244,232,204,.2); background: rgba(20,12,6,.6); color: var(--text); font: inherit; }
 /* a volume read: a gilt tick on its spine */
 .vol.done:not(.face) .vn::after { content: "✓"; display: block; margin-top: 3px; color: #e8c77a; font-size: 10px; }
 

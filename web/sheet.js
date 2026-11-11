@@ -1,10 +1,11 @@
 // A series' sheet: its cover and facts, how much of it is read, the button to read
 // on, following, the missing tomes, its music (Brook), and every volume with what
-// can be done with its reading (mark read, read up to here, back to unread).
+// can be done with its reading (mark read, read up to here, back to unread), and the
+// back of its shelves.
 const Sheet = (() => {
   const { $, el, button, bar, api } = UI;
   const W = () => I18n.words();
-  const { tomes, describe, readingState, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, coverUrl, volumeName, tileLook, readCounts, upTo } = Words;
+  const { tomes, describe, readingState, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, coverUrl, volumeName, tileLook, readCounts, upTo, decorUrl, decorChoices, decorName } = Words;
   let ctx = { reload: () => {}, closeSheet: () => {} };
   let shown = null; // the name of the series on the sheet
 
@@ -139,7 +140,51 @@ const Sheet = (() => {
     return box;
   }
 
-  // a volume with its ⋯ menu: mark read, read up to here, back to unread
+  // ---- the back of the shelves ----
+  async function setDecor(s, decor) {
+    await api("/api/decor", { series: s.name, decor });
+    load();
+  }
+
+  function decorSwatch(s, decor) {
+    const b = button("", "decor-pick", () => setDecor(s, decor));
+    b.setAttribute("aria-pressed", String((s.decor || "banner") === decor));
+    const look = el("span", "swatch");
+    const url = decorUrl(s, decor);
+    if (url) look.style.backgroundImage = `url("${url}")`;
+    b.append(look, el("small", "", decorName(s, decor)));
+    return b;
+  }
+
+  // the decors to pick from, and a link to an image of one's own
+  function decorBox(s) {
+    const box = el("div", "decor-box");
+    const picks = el("div", "decor-picks");
+    picks.append(...decorChoices(s).map((d) => decorSwatch(s, d)));
+    const link = el("form", "decor-link");
+    const input = el("input");
+    input.type = "url";
+    input.required = true;
+    input.placeholder = W().decorLinkHint;
+    const ok = button(W().ok, "button", null);
+    ok.type = "submit";
+    link.append(input, ok);
+    link.onsubmit = (e) => {
+      e.preventDefault();
+      setDecor(s, "url:" + input.value.trim()).catch((err) => link.append(el("p", "error", err.message)));
+    };
+    link.hidden = true;
+    const more = button(W().decorLink, "button", () => {
+      more.hidden = true;
+      link.hidden = false;
+      input.focus();
+    });
+    box.append(el("h3", "", W().decorTitle), picks, more, link, el("p", "note", W().decorVolHint));
+    return box;
+  }
+
+  // a volume with its ⋯ menu: mark read, read up to here, back to unread, its cover on
+  // the back of the shelves
   function tomeWithMenu(v, s) {
     const wrap = el("div", "tome-wrap");
     const menu = el("div", "tome-menu");
@@ -147,6 +192,7 @@ const Sheet = (() => {
     if (!v.done) menu.append(button(W().markRead, "", () => mark([v.id], true)));
     menu.append(button(W().readUpTo, "", () => mark(upTo(s, v), true)));
     if (v.done || v.pages) menu.append(button(W().markUnread, "", () => mark([v.id], false)));
+    menu.append(button(W().asDecor, "", () => setDecor(s, "vol:" + v.id)));
     const more = button("⋯", "tome-more", () => (menu.hidden = !menu.hidden));
     more.title = more.ariaLabel = W().volumeActions;
     wrap.append(tomeTile(v), more, menu);
@@ -167,7 +213,7 @@ const Sheet = (() => {
     acts.append(read, followSwitch(s));
     const facts = el("p", "facts");
     facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
-    text.append(el("h2", "", s.name), facts, acts, progress(s), gaps(s), musicBox(s));
+    text.append(el("h2", "", s.name), facts, acts, progress(s), gaps(s), musicBox(s), decorBox(s));
     head.append(img, text);
     const grid = el("div", "tomes");
     grid.append(...s.volumes.map((x) => tomeWithMenu(x, s)));

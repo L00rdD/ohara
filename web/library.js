@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions, decorUrl } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -136,10 +136,12 @@ const Ohara = (() => {
       inner.append(el("span", "plaque blank", "·"), el("div", "ledge"), el("div", "ledge"), el("div", "ledge"));
       return node;
     }
-    // the series' own decor: its AniList banner on the back of the bay, its colour on the plaque
-    if (b.series.meta.banner) {
+    // the series' own decor: the image chosen on its sheet (its AniList banner by
+    // default) on the back of the bay, its colour on the plaque
+    const back = decorUrl(b.series);
+    if (back) {
       inner.classList.add("decor");
-      inner.style.setProperty("--banner", `url("${b.series.meta.banner}")`);
+      inner.style.setProperty("--banner", `url("${back}")`);
     }
     inner.style.setProperty("--tint", R.colour(b.series.name, b.series.meta.color));
     const text = plaqueText(b);

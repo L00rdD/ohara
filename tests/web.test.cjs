@@ -273,3 +273,19 @@ test("what the card of a place selected on a shelf offers", () => {
   assert.deepEqual(Ohara.selectionActions({ vol: { done: true } }), ["open", "markUnread", "sheet"]);
   assert.deepEqual(Ohara.selectionActions({ gap: 4 }), ["sheet"]);
 });
+
+test("the back of a series' shelves", () => {
+  const s = { meta: { banner: "B.jpg", cover: "C.jpg" }, volumes: [{ id: "S/T02.cbz", number: 2 }] };
+  assert.equal(Ohara.decorUrl(s), "B.jpg");
+  assert.equal(Ohara.decorUrl({ ...s, decor: "cover" }), "C.jpg");
+  assert.equal(Ohara.decorUrl({ ...s, decor: "none" }), null);
+  assert.equal(Ohara.decorUrl({ ...s, decor: "vol:S/T02.cbz" }), "/api/cover?vol=S%2FT02.cbz");
+  assert.equal(Ohara.decorUrl({ ...s, decor: "url:https://x.org/a.jpg" }), "https://x.org/a.jpg");
+  assert.equal(Ohara.decorUrl({ meta: {} }), null);
+  assert.deepEqual(Ohara.decorChoices({ ...s, decor: "banner" }), ["banner", "cover", "none"]);
+  assert.deepEqual(Ohara.decorChoices({ meta: {}, decor: "url:https://x.org/a.jpg" }), ["none", "url:https://x.org/a.jpg"]);
+  assert.equal(fr(() => Ohara.decorName(s, "vol:S/T02.cbz")), "Tome 2");
+  assert.equal(fr(() => Ohara.decorName(s, "vol:S/gone.cbz")), "Un tome");
+  assert.equal(fr(() => Ohara.decorName(s, "url:https://x.org/a.jpg")), "Image du web");
+  assert.equal(en(() => Ohara.decorName(s, "none")), "Bare wood");
+});

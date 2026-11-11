@@ -197,6 +197,27 @@ const Words = (() => {
     return { title: `${series.name}, ${W().tomes(a, b).toLowerCase()}`, state: W().toGet };
   }
 
+  // the image on the back of a series' bays: the decor chosen on its sheet, its AniList
+  // banner by default; null for bare wood
+  function decorUrl(s, decor = s.decor || "banner") {
+    if (decor.startsWith("vol:")) return coverUrl(decor.slice(4));
+    if (decor.startsWith("url:")) return decor.slice(4);
+    return { banner: s.meta.banner, cover: s.meta.cover }[decor] || null;
+  }
+
+  // the decors a series' sheet offers: its banner and cover when AniList has them, bare
+  // wood, and the volume or the link chosen
+  function decorChoices(s) {
+    const all = ["banner", "cover"].filter((d) => decorUrl(s, d)).concat("none");
+    return s.decor && !all.includes(s.decor) ? all.concat(s.decor) : all;
+  }
+
+  function decorName(s, decor) {
+    const v = decor.startsWith("vol:") && s.volumes.find((x) => x.id === decor.slice(4));
+    if (v) return volumeName(v);
+    return W().decors[decor.split(":")[0]];
+  }
+
   // what the card of a place selected on a shelf offers: a volume can be read, marked
   // read (or back to unread when it is read) and lead to its series' sheet; a missing
   // tome only to the sheet, where it can be fetched
@@ -236,7 +257,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;
