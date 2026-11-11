@@ -161,7 +161,7 @@ class FileNames(unittest.TestCase):
              "One Piece T099.cbz", "One Piece Tome 109 - Scan.cbz", "One Piece Tome 109 - Scan.epub"]
 
     def test_files_named_in_several_ways(self):
-        [a] = an.files_named_in_several_ways(snap(series("One Piece", self.FILES)))
+        [a] = an.files_named_in_several_ways(snap(series("One Piece", self.FILES, {"id": 13})))
         self.assertEqual((a["id"], a["severity"]), ("file_names:One Piece", "advice"))
         self.assertEqual(a["text"]["fr"], "Les fichiers de « One Piece » sont nommés de 4 façons.")
         [r] = a["remedies"]
@@ -174,7 +174,8 @@ class FileNames(unittest.TestCase):
         shelves = [series("Naruto", [f"[Compressé] Naruto [Team Chromatique] - Tome #00{n} - [V{n}].cbz" for n in (1, 2)]),
                    series("Bleach", ["Bleach T01.cbz", "Bleach 2.cbz", "Bleach Gaiden.cbz"]),  # one without a number
                    series("Berserk", ["Berserk T01.cbz", "Berserk 1 (2023).cbz"]),  # two would be Berserk T01.cbz
-                   series("Empty", [])]
+                   series("Empty", []),
+                   series("Harry Potter", ["Rowling [Tome 1] - L'école des sorciers.epub", "Harry Potter T02.epub"])]  # unknown to AniList: a novel
         self.assertEqual(an.files_named_in_several_ways(snap(*shelves)), [])
 
 

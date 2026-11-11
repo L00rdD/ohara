@@ -183,6 +183,8 @@ class Examined(unittest.TestCase):
     def test_every_examination_through_chopper(self):
         with mock.patch.object(chopper, "_loaded", True):
             found = chopper.examine(snapshot(eragon(decor="vol:gone"), naruto(follow=True), naruto(missing=[2]) | {"name": "One Piece"}))
+        mine = ("decor-gone", "anilist-unknown", "anilist-doubtful", "follow-over", "tomes-missing")
+        found = [a for a in found if a["kind"] in mine]  # the other families examine the library too
         self.assertEqual(ids(found), ["decor-gone:" + ERAGON, "anilist-unknown:" + ERAGON, "follow-over:Naruto", "tomes-missing:One Piece"])
 
 

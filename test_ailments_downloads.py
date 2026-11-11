@@ -10,9 +10,11 @@ from pathlib import Path
 from unittest import mock
 
 _spec = importlib.util.spec_from_file_location("ohara", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ohara.py"))
-ohara = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(ohara)
-sys.modules["ohara"] = ohara  # as it is when it runs: Chopper's remedies are given it
+ohara = sys.modules.get("ohara")  # one copy for every test module, as there is one when Ohara runs
+if ohara is None:
+    ohara = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(ohara)
+    sys.modules["ohara"] = ohara  # Chopper's remedies are given it
 
 import ailments_downloads as dl  # noqa: E402
 
