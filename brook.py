@@ -137,7 +137,10 @@ def vorbis_title(block):
 def track_title(path, head):
     """A track's title: its tag when it has one, else its file name made readable."""
     tagged = id3_title(head) if path.suffix.lower() == ".mp3" else flac_title(head) if path.suffix.lower() == ".flac" else None
-    return tagged or clean_title(Path(path).stem)
+    if tagged:
+        # some tags keep the track's number: "01_Shippuuden", "03_ Homecoming"
+        return re.sub(r"^\d{1,3}\s*[-_.]\s*", "", tagged) or tagged
+    return clean_title(Path(path).stem)
 
 
 def album_of(relative):
