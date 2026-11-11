@@ -17,6 +17,15 @@ Tree of Knowledge.
   the shelves by their spines, the missing ones as empty places. Turn it by dragging,
   with the wheel, the arrow keys or the buttons on the sides; light falls from the
   canopy on the bay in front, lanterns hang on the posts, dust floats in the light.
+- **Spines and decor.** Scans hardly ever hold a volume's real spine, and no public
+  database has them, so Robin, Ohara's librarian, reads the cover of each volume
+  that comes in: the colour of its left edge (where a cover meets its spine), its
+  main and accent colours, and the liveliest square of the illustration for the top
+  of the spine. Three styles of spines in the settings: *Comme le tome* (from the
+  cover), *Reliure d'Ohara* (leather in the series' colour, gilt bands) and *Sobre*.
+  Each series' bays wear its AniList banner on their back wall. A long series takes
+  as many bays as its volumes need; the contents (≡) list every series A to Z and
+  turn the rotunda to it.
 - **The lectern.** The volume you are reading lies open in the middle of the rotunda,
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.
@@ -103,6 +112,7 @@ Python 3 with only the standard library, plus Pillow for the covers; plain HTML,
 and JavaScript for the pages: `i18n.js` (the words in French and English),
 `words.js` (what is said and shown, decided from the data), `rotunda.js` (the
 rotunda's geometry and what each bay holds), `library.js` (the page),
+`robin.py` (what a spine needs, read from a cover),
 `reader.js` (the reader).
 
 ```bash

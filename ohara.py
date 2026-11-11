@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
                    speed, tome_range, volume_label, volume_number)
 
@@ -63,7 +64,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings"):
+    for key in ("downloads", "progress", "series", "lookups", "settings", "spines"):
         state.setdefault(key, {})
     return state
 
@@ -91,7 +92,7 @@ def series_entry(state, name):
 # ---------- AniList: cover, colour, status and number of volumes of a series ----------
 
 ANILIST_QUERY = """query($s: String) { Page(perPage: 6) { media(search: $s, type: MANGA, sort: SEARCH_MATCH) {
-  id title { romaji english native } synonyms coverImage { extraLarge large color } volumes status startDate { year } } } }"""
+  id title { romaji english native } synonyms coverImage { extraLarge large color } bannerImage volumes status startDate { year } } } }"""
 STATUS = {"RELEASING": "En cours", "FINISHED": "Terminé", "HIATUS": "En pause", "CANCELLED": "Arrêté", "NOT_YET_RELEASED": "À paraître"}
 
 
@@ -107,6 +108,7 @@ def anilist_fetch(name):
         "title": m["title"]["english"] or m["title"]["romaji"],
         "cover": m["coverImage"]["extraLarge"] or m["coverImage"]["large"],
         "color": m["coverImage"]["color"],
+        "banner": m.get("bannerImage"),
         "status": STATUS.get(m["status"], ""),
         "volumes": m["volumes"],
         "year": (m.get("startDate") or {}).get("year"),
@@ -136,7 +138,8 @@ def lookup(name):
     AniList does not know it; nothing kept when it does not answer)."""
     key = norm(name)
     cached = load_state()["lookups"].get(key)
-    if cached is not None:
+    # kept answers from before the banners were asked for are asked again
+    if cached is not None and (not cached or "banner" in cached):
         return cached
     try:
         found = anilist_fetch(name)
@@ -587,6 +590,7 @@ def follows_due():
 
 def tick():
     check_downloads()
+    read_spines()
     if follows_due():
         check_follows()
 
@@ -598,6 +602,63 @@ def watch():
         except Exception as e:  # Transmission restarting, a disk hiccup: try again later
             print("watch:", e, flush=True)
         time.sleep(30)
+
+
+# ---------- Robin: what each volume's spine needs, read from its cover ----------
+
+SPINE_STYLES = ("tome", "reliure", "sobre")
+
+
+def crop_path(vid):
+    return STATE_DIR / "crops" / (hashlib.sha1(vid.encode()).hexdigest() + ".jpg")
+
+
+def spine_of(vid, spines):
+    """A volume's spine colours, when Robin has read its cover."""
+    info = (spines or {}).get(vid)
+    return {k: v for k, v in info.items() if k != "at"} if info else None
+
+
+def read_spine(path):
+    """Robin reads one volume's cover: colours kept in the state, the illustration's
+    square in .ohara/crops."""
+    vid = volume_id(path)
+    data, _ = page_bytes(path, 0)
+    info, crop = robin.read_cover(data)
+    out = crop_path(vid)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(crop)
+    info["at"] = path.stat().st_mtime
+
+    def keep(state):
+        state["spines"][vid] = info
+    update_state(keep)
+
+
+def read_spines(limit=10):
+    """Reads the covers Robin has not read yet (or that changed), a few at a time
+    so the Pi stays free. Returns how many were read."""
+    spines = load_state()["spines"]
+    todo = [p for n in library_names() for p in volumes(MANGA / n)
+            if p.suffix.lower() in READABLE and (spines.get(volume_id(p)) or {}).get("at") != p.stat().st_mtime]
+    for p in todo[:limit]:
+        try:
+            read_spine(p)
+        except Exception as e:  # a broken archive: try the others
+            print(f"robin {p.name}:", e, flush=True)
+    return min(len(todo), limit)
+
+
+def settings():
+    return {"spines": load_state()["settings"].get("spines", "tome")}
+
+
+def set_settings(changes):
+    def change(state):
+        if changes.get("spines") in SPINE_STYLES:
+            state["settings"]["spines"] = changes["spines"]
+    update_state(change)
+    return settings()
 
 
 # ---------- library ----------
@@ -626,7 +687,7 @@ def library_names():
 
 
 def series_info(d, state):
-    vols = [volume_info(v, state["progress"]) for v in volumes(d)]
+    vols = [volume_info(v, state["progress"], state["spines"]) for v in volumes(d)]
     entry = state["series"].get(d.name, {})
     meta = state["lookups"].get(norm(d.name)) or {}
     numbers = {int(v["number"]) for v in vols if v["number"]}
@@ -649,7 +710,7 @@ def series_list(state):
     return [series_info(d, state) for d in dirs]
 
 
-def volume_info(path, progress):
+def volume_info(path, progress, spines=None):
     vid = volume_id(path)
     p = progress.get(vid, {})
     readable = path.suffix.lower() in READABLE
@@ -664,6 +725,7 @@ def volume_info(path, progress):
         "done": bool(p.get("pages")) and p.get("page", 0) >= p["pages"] - 1,
         "new": not p and time.time() - path.stat().st_mtime < NEW_FOR,
         "at": p.get("at", 0),
+        "spine": spine_of(vid, spines),
     }
 
 
@@ -703,7 +765,8 @@ def refresh_meta():
     """Asks AniList about the series of the library it has not been asked about yet."""
     state = load_state()
     names = set(library_names()) | {d["series"] for d in state["downloads"].values()}
-    missing = sorted(n for n in names if norm(n) not in state["lookups"])
+    stale = lambda n: norm(n) not in state["lookups"] or (state["lookups"][norm(n)] and "banner" not in state["lookups"][norm(n)])
+    missing = sorted(n for n in names if stale(n))
     found = lookups(missing)
 
     def keep(state):
@@ -887,6 +950,19 @@ def post_indexers(h):
     h.send(200, indexers())
 
 
+def get_crop(h):
+    vid = h.query()["vol"]
+    volume_path(vid)
+    path = crop_path(vid)
+    if not path.exists():
+        raise KeyError("no crop yet")
+    h.send(200, path.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=86400"})
+
+
+def post_settings(h):
+    h.send(200, set_settings(h.body()))
+
+
 def post_cancel(h):
     cancel(h.body()["hash"])
     h.send(200, {"ok": True})
@@ -900,9 +976,11 @@ GET_ROUTES = {
     "/api/file": get_file,
     "/api/cover": get_cover,
     "/api/indexers": lambda h: h.send(200, indexers()),
+    "/api/crop": get_crop,
+    "/api/settings": lambda h: h.send(200, settings()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/cancel": post_cancel}
 
 
 def main():

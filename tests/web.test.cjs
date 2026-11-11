@@ -209,3 +209,25 @@ test("what is said of the place selected", () => {
   assert.deepEqual(fr(() => Ohara.selectionText({ run: [1, 97] }, s)), { title: "Naruto, tomes 1 à 97", state: "à récupérer" });
   assert.deepEqual(en(() => Ohara.selectionText({ gap: 7 }, s)), { title: "Naruto, volume 7", state: "to get" });
 });
+
+test("a spine's colours: Robin's reading, else the series' colour", () => {
+  assert.deepEqual(Ohara.spineColours({ spine: { edge: "#111111", main: "#222222", accent: "#333333", ink: "#fdf6e6" } }, "#999999"), { edge: "#111111", main: "#222222", accent: "#333333", ink: "#fdf6e6" });
+  assert.deepEqual(Ohara.spineColours({ spine: null }, "#999999"), { edge: "#999999", main: "#999999", accent: "#999999", ink: "#fdf6e6" });
+});
+
+test("the contents: each series once, A to Z, at its first bay", () => {
+  const s = (name) => ({ name });
+  const bays = [{ series: s("one piece") }, { series: s("Naruto") }, { series: s("Naruto") }, { series: s("Berserk") }];
+  assert.deepEqual(Ohara.contents(bays).map((x) => [x.series.name, x.bay]), [["Berserk", 3], ["Naruto", 1], ["one piece", 0]]);
+});
+
+test("everything a spine needs", () => {
+  const s = { name: "S", new: 0, volumes: [1, 2] };
+  const plain = Ohara.spineDraw(vol({ spine: null, number: 7 }), s, null, "#123456");
+  assert.deepEqual(plain, { cls: "vol", vars: { "--c": "#123456", "--edge": "#123456", "--main": "#123456", "--accent": "#123456", "--ink": "#fdf6e6" }, cover: null, height: null, art: null, number: "7" });
+  const read = Ohara.spineDraw(vol({ spine: { edge: "#1", main: "#2", accent: "#3", ink: "#4" }, pages: 10, page: 2 }), s, "S/T5.cbz", "#123456");
+  assert.equal(read.cover, "/api/cover?vol=S%2FT5.cbz");
+  assert.equal(read.art, "/api/crop?vol=S%2FT5.cbz");
+  assert.equal(read.height, "86%");
+  assert.equal(Ohara.spineDraw(vol({ number: null }), s, null, "#1").number, "");
+});

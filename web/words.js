@@ -98,6 +98,35 @@ const Words = (() => {
     return (downloads.length ? downloads.reduce((a, d) => a + d.pct, 0) / downloads.length / 100 : 0);
   }
 
+  // a spine's colours: those Robin read on the volume's cover, else the series' own
+  function spineColours(v, colour) {
+    const c = v.spine;
+    if (c) return { edge: c.edge, main: c.main, accent: c.accent, ink: c.ink };
+    return { edge: colour, main: colour, accent: colour, ink: "#fdf6e6" };
+  }
+
+  // everything a spine needs to be drawn: classes, CSS variables, images, number
+  function spineDraw(v, s, reading, colour) {
+    const look = spineLook(v, s, reading);
+    const vars = { "--c": colour };
+    for (const [k, value] of Object.entries(spineColours(v, colour))) vars["--" + k] = value;
+    return {
+      cls: look.cls,
+      vars,
+      cover: look.cover ? coverUrl(v.id) : null,
+      height: look.height ? look.height + "%" : null,
+      art: v.spine ? `/api/crop?vol=${encodeURIComponent(v.id)}` : null,
+      number: v.number ? String(v.number) : "",
+    };
+  }
+
+  // the bay of a series in the contents: the first one it stands on
+  function contents(bays) {
+    const seen = new Map();
+    bays.forEach((b, i) => !seen.has(b.series.name) && seen.set(b.series.name, { series: b.series, bay: i }));
+    return [...seen.values()].sort((a, b) => a.series.name.localeCompare(b.series.name, undefined, { sensitivity: "base", numeric: true }));
+  }
+
   // the look of a volume's spine on the shelf
   function spineLook(v, s, readingId) {
     const face = v.id === readingId;
@@ -169,7 +198,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

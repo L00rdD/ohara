@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -33,7 +33,6 @@ const Ohara = (() => {
     if (!r.ok) throw new Error(data.error || r.status);
     return data;
   };
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let lib = { series: [], downloads: [], last: null };
   let rot = 0;
@@ -45,6 +44,7 @@ const Ohara = (() => {
     $("flag").textContent = I18n.get() === "fr" ? "🇫🇷" : "🇬🇧";
     $("flag").title = I18n.get() === "fr" ? "English" : "Français";
     $("open-settings").title = W().settings;
+    $("open-contents").title = W().contentsHint;
     $("turn-left").title = W().turnLeft;
     $("turn-right").title = W().turnRight;
     $("search-form").q.placeholder = W().search;
@@ -100,17 +100,23 @@ const Ohara = (() => {
   }
   const selectable = selection();
 
+  // a spine in the style chosen in the settings (see ohara.css: .vol[data-style])
+  let spineStyle = "tome";
   function spine(v, s, reading) {
-    const look = spineLook(v, s, reading);
-    const b = selectable(el("button", look.cls), v.id, { vol: v }, s, () => (location.href = openUrl(v)));
+    const d = spineDraw(v, s, reading, R.colour(s.name, s.meta.color));
+    const b = selectable(el("button", d.cls), v.id, { vol: v }, s, () => (location.href = openUrl(v)));
     b.type = "button";
+    b.dataset.style = spineStyle;
     b.setAttribute("aria-label", `${s.name}, ${volumeName(v)} (${readingState(v)})`);
-    b.style.setProperty("--c", R.colour(s.name, s.meta.color));
-    if (look.cover) b.style.backgroundImage = `url("${coverUrl(v.id)}")`;
-    if (look.height) b.style.height = look.height + "%";
-    b.append(el("span", "vt", s.name), el("span", "vn", v.number ? String(v.number) : ""));
+    for (const [k, value] of Object.entries(d.vars)) b.style.setProperty(k, value);
+    const art = el("span", "art");
+    b.style.backgroundImage = d.cover ? `url("${d.cover}")` : "";
+    b.style.height = d.height || "";
+    art.style.backgroundImage = d.art ? `url("${d.art}")` : "";
+    b.append(art, el("span", "vt", s.name), el("span", "vn", d.number));
     return b;
   }
+
 
   // an empty place on a shelf: a missing tome, or a run of them
   function hole(place, s, i) {
@@ -132,6 +138,12 @@ const Ohara = (() => {
       inner.append(el("span", "plaque blank", "·"), el("div", "ledge"), el("div", "ledge"), el("div", "ledge"));
       return node;
     }
+    // the series' own decor: its AniList banner on the back of the bay, its colour on the plaque
+    if (b.series.meta.banner) {
+      inner.classList.add("decor");
+      inner.style.setProperty("--banner", `url("${b.series.meta.banner}")`);
+    }
+    inner.style.setProperty("--tint", R.colour(b.series.name, b.series.meta.color));
     const text = plaqueText(b);
     const plaque = button(text.title, "plaque", () => openSeries(b.series, i));
     plaque.append(el("small", "", text.sub));
@@ -452,6 +464,7 @@ const Ohara = (() => {
     }
     const list = el("div", "", "…");
     sheet.replaceChildren(button("✕", "round close", () => closeSheet(sheet)), el("h2", "", W().settings), el("h3", "", W().language), langs,
+      el("h3", "", W().spinesTitle), el("p", "note", W().spinesHint), spineChoices(),
       el("h3", "", W().indexers), el("p", "note", W().indexersHint), list);
     const add = el("a", "button", W().addIndexer);
     add.href = `http://${location.hostname}:9696/`;
@@ -464,6 +477,48 @@ const Ohara = (() => {
     } catch {
       list.replaceChildren(el("p", "error", W().indexersFailed));
     }
+  }
+
+  // the three styles of spines, each shown with a sample of three spines
+  function spineChoices() {
+    const box = el("div", "spine-choices");
+    for (const [style, [name, hint]] of Object.entries(W().spineStyles)) {
+      const b = button("", "spine-choice" + (style === spineStyle ? " on" : ""), async () => {
+        spineStyle = (await api("/api/settings", { spines: style })).spines;
+        drawRotunda();
+        box.replaceWith(spineChoices());
+      });
+      const sample = el("span", "sample");
+      for (const [n, colour] of [[1, "#c7372f"], [2, "#2f6f9a"], [3, "#e2b23a"]]) {
+        const v = el("span", "vol");
+        v.dataset.style = style;
+        for (const k of ["edge", "main", "accent", "c"]) v.style.setProperty("--" + k, colour);
+        v.style.setProperty("--ink", "#fdf6e6");
+        v.append(el("span", "art"), el("span", "vt", "Ohara"), el("span", "vn", String(n)));
+        sample.append(v);
+      }
+      b.append(sample, el("b", "", name), el("small", "", hint));
+      box.append(b);
+    }
+    return box;
+  }
+
+  // ---- the contents: every series, A to Z, to go to its bay ----
+  function openContents() {
+    const box = $("contents");
+    if (!box.hidden) return (box.hidden = true);
+    const list = contents(wall).map(({ series, bay }) => {
+      const row = button("", "entry", () => {
+        box.hidden = true;
+        turnTo(R.rotationFor(bay, rot, geometry().count));
+      });
+      const dot = el("span", "dot");
+      dot.style.background = R.colour(series.name, series.meta.color);
+      row.append(dot, el("b", "", series.name), el("small", "", W().volumes(series.volumes.length)));
+      return row;
+    });
+    box.replaceChildren(el("h4", "", W().contents), ...list);
+    box.hidden = false;
   }
 
   function drawIndexers(list, all) {
@@ -491,6 +546,7 @@ const Ohara = (() => {
 
   // ---- dust in the light of the canopy ----
   function motes() {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const c = $("motes");
     const w = (c.width = innerWidth);
     const h = (c.height = innerHeight);
@@ -553,7 +609,7 @@ const Ohara = (() => {
   }
 
   function closeAll() {
-    for (const id of ["series", "settings", "search", "downloads"]) $(id).hidden = true;
+    for (const id of ["series", "settings", "search", "downloads", "contents"]) $(id).hidden = true;
     $("lantern").setAttribute("aria-expanded", "false");
   }
 
@@ -569,6 +625,11 @@ const Ohara = (() => {
     $("all-languages").onchange = drawFinds;
     $("flag").onclick = () => setLanguage(I18n.get() === "fr" ? "en" : "fr");
     $("open-settings").onclick = openSettings;
+    $("open-contents").onclick = openContents;
+    api("/api/settings").then((st) => {
+      spineStyle = st.spines;
+      drawRotunda();
+    }, () => {});
     $("lantern").onclick = () => {
       const open = $("downloads").hidden;
       $("downloads").hidden = !open;

@@ -229,7 +229,7 @@ class AniList(Library):
     def test_fetch(self):
         with mock.patch.object(ohara, "http_json", return_value=self.ANSWER) as call:
             meta = ohara.anilist_fetch("frieren")
-        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "status": "En cours", "volumes": None, "year": 2020})
+        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "banner": None, "status": "En cours", "volumes": None, "year": 2020})
         self.assertEqual(call.call_args.kwargs["headers"]["User-Agent"], "Ohara/1.0")
         with mock.patch.object(ohara, "http_json", return_value={"data": {"Page": {"media": []}}}):
             self.assertEqual(ohara.anilist_fetch("zzz"), {})
@@ -246,9 +246,16 @@ class AniList(Library):
         self.assertIs(ohara.best_match("B.P.", [found[0], by_synonym]), by_synonym)
 
     def test_lookup_is_kept(self):
-        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5}) as fetch:
-            self.assertEqual(ohara.lookup("Frieren"), {"id": 5})
-            self.assertEqual(ohara.lookup("frieren!"), {"id": 5})
+        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5, "banner": None}) as fetch:
+            self.assertEqual(ohara.lookup("Frieren"), {"id": 5, "banner": None})
+            self.assertEqual(ohara.lookup("frieren!"), {"id": 5, "banner": None})
+        fetch.assert_called_once()
+
+    def test_answers_without_a_banner_are_asked_again(self):
+        ohara.save_state({"lookups": {"frieren": {"id": 5}}})
+        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5, "banner": "b.jpg"}) as fetch:
+            self.assertEqual(ohara.lookup("Frieren")["banner"], "b.jpg")
+            ohara.lookup("Frieren")
         fetch.assert_called_once()
 
     def test_lookup_not_kept_when_anilist_is_down(self):
@@ -259,7 +266,8 @@ class AniList(Library):
     def test_refresh_meta_for_the_library(self):
         cbz(self.root / "Frieren" / "T1.cbz", ["1.png"])
         cbz(self.root / "Unknown" / "T1.cbz", ["1.png"])
-        ohara.save_state({"downloads": {"H": {"series": "Naruto"}}})
+        ohara.save_state({"downloads": {"H": {"series": "Naruto"}}, "lookups": {"old": {"id": 1}}})
+        cbz(self.root / "Old" / "T1.cbz", ["1.png"])
         with mock.patch.object(ohara, "anilist_fetch", side_effect=lambda n: {"id": 5} if n == "Frieren" else {"id": 7} if n == "Naruto" else {}):
             ohara.refresh_meta()
         state = ohara.load_state()
@@ -267,6 +275,7 @@ class AniList(Library):
         self.assertNotIn("Unknown", state["series"])
         self.assertEqual(state["lookups"]["unknown"], {})
         self.assertEqual(state["lookups"]["naruto"], {"id": 7})
+        self.assertEqual(state["lookups"]["old"], {})
 
 
 class FakeResponse(io.BytesIO):
@@ -516,7 +525,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}})
 
 
 class Http(Reading):
@@ -572,6 +581,13 @@ class Http(Reading):
             self.assertEqual(json.loads(self.call("GET", "/api/indexers")[2]), [{"name": "X"}])
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome"})
+        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre"})[2]), {"spines": "sobre"})
+        self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
+        ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
+        code, head, _ = self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")
+        self.assertEqual(code, 200)
+        self.assertIn("image/jpeg", head)
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
         cancel.assert_called_once_with("H")
@@ -704,8 +720,10 @@ class Follow(Library):
         self.assertTrue(ohara.follows_due())
         ohara.save_state({"followed_at": ohara.time.time()})
         self.assertFalse(ohara.follows_due())
-        with mock.patch.object(ohara, "check_downloads") as downloads, mock.patch.object(ohara, "check_follows") as follows:
+        with mock.patch.object(ohara, "check_downloads") as downloads, mock.patch.object(ohara, "check_follows") as follows, \
+                mock.patch.object(ohara, "read_spines") as spines:
             ohara.tick()
+        spines.assert_called_once()
         downloads.assert_called_once()
         follows.assert_not_called()
 
@@ -721,6 +739,76 @@ class Follow(Library):
         self.assertEqual((info["follow"], info["meta"]["cover"], info["missing"], info["coming"]), (True, "c", [3, 4, 6, 8], [7]))
         self.assertEqual([v["new"] for v in info["volumes"]], [False, False, True])
         self.assertEqual(info["new"], 1)
+
+
+class Robin(Library):
+    def cover(self, colour=(30, 90, 200), left=(240, 230, 210)):
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (300, 450), colour)
+        d = ImageDraw.Draw(img)
+        d.rectangle([0, 0, 29, 449], fill=left)
+        for i in range(0, 120, 6):  # something busy near the top right
+            d.line([(200 + i % 60, 40), (260, 40 + i)], fill=(255, 255, 0), width=2)
+        out = io.BytesIO()
+        img.save(out, "PNG")
+        return out.getvalue()
+
+    def test_reads_a_cover(self):
+        import robin
+        info, crop = robin.read_cover(self.cover())
+        self.assertEqual(info["edge"], "#f0e6d2")
+        self.assertEqual(info["main"], "#1e5ac8")
+        self.assertEqual(info["ink"], "#1b130b")
+        self.assertTrue(crop.startswith(b"\xff\xd8"))
+        dark, _ = robin.read_cover(self.cover(left=(20, 20, 20)))
+        self.assertEqual(dark["ink"], "#fdf6e6")
+
+    def test_liveliest_square_is_where_things_happen(self):
+        import robin
+        from PIL import Image
+        img = Image.open(io.BytesIO(self.cover())).convert("RGB")
+        square = robin.liveliest(img)
+        self.assertEqual(square.size, (robin.CROP, robin.CROP))
+        yellow = sum(1 for p in square.getdata() if p[0] > 200 and p[1] > 200 and p[2] < 100)
+        self.assertGreater(yellow, 20)
+
+    def test_accent_and_palette(self):
+        import robin
+        self.assertEqual(robin.accent([(10, (100, 100, 100))], (100, 100, 100)), (100, 100, 100))
+        self.assertEqual(robin.accent([(10, (100, 100, 100)), (5, (250, 10, 10)), (3, (120, 110, 100))], (100, 100, 100)), (250, 10, 10))
+
+    def test_spines_read_a_few_at_a_time_and_kept(self):
+        for n in range(1, 4):
+            path = self.root / "Frieren" / f"Frieren T{n:02d}.cbz"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("001.png", self.cover())
+        (self.root / "Frieren" / "Extra.pdf").write_bytes(b"%PDF")
+        self.assertEqual(ohara.read_spines(limit=2), 2)
+        self.assertEqual(ohara.read_spines(limit=2), 1)
+        self.assertEqual(ohara.read_spines(limit=2), 0)
+        state = ohara.load_state()
+        info = ohara.spine_of("Frieren/Frieren T01.cbz", state["spines"])
+        self.assertEqual(set(info), {"edge", "main", "accent", "ink"})
+        self.assertIsNone(ohara.spine_of("Frieren/none.cbz", state["spines"]))
+        self.assertTrue(ohara.crop_path("Frieren/Frieren T01.cbz").exists())
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            vols = {v["file"]: v for v in ohara.library()["series"][0]["volumes"]}
+        self.assertEqual(vols["Frieren T01.cbz"]["spine"]["main"], info["main"])
+        self.assertIsNone(vols["Extra.pdf"]["spine"])
+
+    def test_a_broken_volume_does_not_stop_robin(self):
+        path = self.root / "Broken" / "T01.cbz"
+        path.parent.mkdir(parents=True)
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("001.png", b"not an image")
+        self.assertEqual(ohara.read_spines(), 1)
+        self.assertEqual(ohara.load_state()["spines"], {})
+
+    def test_spine_style_setting(self):
+        self.assertEqual(ohara.settings(), {"spines": "tome"})
+        self.assertEqual(ohara.set_settings({"spines": "reliure"}), {"spines": "reliure"})
+        self.assertEqual(ohara.set_settings({"spines": "neon"}), {"spines": "reliure"})
 
 
 class Main(Library):
