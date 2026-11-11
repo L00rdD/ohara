@@ -99,3 +99,28 @@ test("a colour for every series", () => {
   assert.match(R.colour("One Piece", null), /^hsl\(\d+, 38%, 38%\)$/);
   assert.equal(R.colour("Naruto"), R.colour("Naruto"));
 });
+
+test("small series share a bay, each on its own shelf", () => {
+  const many = (name, n) => ({ name, volumes: Array.from({ length: n }, (_, i) => ({ id: `${name}/T${i + 1}`, number: i + 1 })), missing: [] });
+  const [eragon, potter, dune, big, last] = [many("Eragon", 5), many("Potter", 7), many("Dune", 6), many("Big", 30), many("Last", 3)];
+  const four = many("Four", 2);
+  const bays = R.wall([eragon, potter, dune, four, big, last], null);
+  assert.deepEqual(bays.map((b) => b.shelves.map((s) => s && s.name)), [
+    ["Eragon", "Potter", "Dune"], // three small ones fill a bay
+    ["Four", null, null], // the fourth starts another
+    ["Big", "Big", "Big"], // a series on more than a shelf keeps its bay
+    ["Last", null, null],
+  ]);
+  assert.deepEqual(bays[0].rows.map((r) => r.length), [5, 7, 6]);
+  assert.deepEqual(R.members(bays[0]).map((s) => s.name), ["Eragon", "Potter", "Dune"]);
+  assert.equal(R.bayOf(bays, "Dune/T6"), 0);
+  assert.equal("used" in bays[0], false);
+});
+
+test("a tome in several formats stands once on the shelf: read in Ohara, else a PDF", () => {
+  const s = { name: "E", missing: [], volumes: [
+    { id: "E/1.epub", number: 1, file: "1.epub" }, { id: "E/1.pdf", number: 1, file: "1.pdf" },
+    { id: "E/2.pdf", number: 2, file: "2.pdf" }, { id: "E/2.cbz", number: 2, file: "2.cbz", readable: true },
+  ] };
+  assert.deepEqual(R.places(s).map((p) => p.vol.id), ["E/1.pdf", "E/2.cbz"]);
+});

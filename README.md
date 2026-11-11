@@ -24,7 +24,9 @@ Tree of Knowledge.
   of the spine. Three styles of spines in the settings: *Comme le tome* (from the
   cover), *Reliure d'Ohara* (leather in the series' colour, gilt bands) and *Sobre*.
   Each series' bays wear its AniList banner on their back wall. A long series takes
-  as many bays as its volumes need; the contents (≡) list every series A to Z and
+  as many bays as its volumes need; small ones (a shelf's worth) share a bay, each on
+  its own shelf under a small plaque. A tome kept in several formats (an EPUB and a
+  PDF) stands once, and counts once. The contents (≡) list every series A to Z and
   turn the rotunda to it.
 - **Ambient music.** Brook, Ohara's musician, finds the soundtrack of each series that
   comes in among the indexers' audio releases (its title must name the series, under

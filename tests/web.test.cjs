@@ -199,7 +199,7 @@ test("a volume's name in the language chosen", () => {
 });
 
 test("what a bay's plaque says", () => {
-  const s = { name: "Naruto", follow: true, volumes: new Array(72) };
+  const s = { name: "Naruto", follow: true, volumes: Array.from({ length: 72 }, (_, i) => ({ number: i + 1 })) };
   assert.deepEqual(fr(() => Ohara.plaqueText({ series: s, part: 0, parts: 1, span: [1, 72] })), { title: "Naruto", sub: "72 tomes · suivie" });
   const some = { name: "Naruto", follow: false, volumes: [{ done: true }, { done: true }, { pages: 9 }, {}] };
   assert.deepEqual(fr(() => Ohara.plaqueText({ series: some, part: 0, parts: 1, span: [1, 4] })), { title: "Naruto", sub: "2 lus sur 4" });
@@ -248,6 +248,8 @@ test("what a download is called", () => {
 test("how much of a series is read", () => {
   const s = { volumes: [{ done: true, pages: 9 }, { pages: 9, page: 2 }, {}, {}] };
   assert.deepEqual(Ohara.readCounts(s), { done: 1, started: 1, unread: 2, total: 4 });
+  const twice = { volumes: [{ number: 1, file: "1.epub" }, { number: 1, file: "1.pdf", done: true, pages: 9 }, { number: 2, file: "2.epub" }, { number: 2, file: "2.pdf" }] };
+  assert.deepEqual(Ohara.readCounts(twice), { done: 1, started: 0, unread: 1, total: 2 }); // an EPUB and a PDF: one tome
   assert.equal(fr(() => I18n.words().progressLine(1, 1, 2)), "1 lu, 1 en cours, 2 à lire");
   assert.equal(fr(() => I18n.words().progressLine(3, 0, 0)), "3 lus");
   assert.equal(en(() => I18n.words().progressLine(0, 2, 1)), "2 started, 1 to read");

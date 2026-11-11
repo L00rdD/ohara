@@ -1,6 +1,7 @@
 // The rotunda's geometry and what each bay holds: pure functions, tested in node.
 // The library is the round wall inside the Tree of Knowledge: each series on as many
-// bays as its tomes need, at least MIN_BAYS so that a small library still makes a room.
+// bays as its tomes need, small ones sharing a bay, at least MIN_BAYS so that a small
+// library still makes a room.
 const Rotunda = (() => {
   const MIN_BAYS = 8;
   const ROWS = 3; // shelves in a bay
@@ -42,6 +43,10 @@ const Rotunda = (() => {
   // only the bays you can see are drawn: within ±110° of the front
   const visible = (deg) => Math.abs(deg) <= 110;
 
+  // which file of a tome kept in several formats stands on the shelf: the one read in
+  // Ohara, then a PDF (the browser opens it), then the rest
+  const rank = (v) => (v.readable ? 0 : /\.pdf$/i.test(v.file || "") ? 1 : 2);
+
   // The places of a series on the wall: its volumes and the missing ones, in tome
   // order. A place is {vol}, {gap: n}, or {run: [first, last]} for a long run of
   // missing tomes; volumes without a number come last.
@@ -51,7 +56,11 @@ const Rotunda = (() => {
     const missing = new Set(series.missing || []);
     let last = 0;
     for (const v of series.volumes) last = Math.max(last, v.number || 0);
-    const byNumber = new Map(numbered.map((v) => [Math.floor(v.number), v]));
+    const byNumber = new Map();
+    for (const v of numbered) {
+      const n = Math.floor(v.number);
+      if (!byNumber.has(n) || rank(v) < rank(byNumber.get(n))) byNumber.set(n, v);
+    }
     const first = numbered.length ? Math.floor(Math.min(...numbered.map((v) => v.number))) : 1;
     for (let n = Math.min(first, missing.size ? Math.min(...missing) : first); n <= last; n++) {
       if (byNumber.has(n)) all.push({ vol: byNumber.get(n) });
@@ -111,15 +120,31 @@ const Rotunda = (() => {
   }
 
   // The wall: every series on as many bays as its tomes need, one after the other.
-  // A bay is {series, index (of the series), part, parts, rows, span}.
+  // A series that holds on one shelf shares its bay with the small ones next to it,
+  // each on its own shelf. A bay is {series, index (of the series), part, parts, rows,
+  // span, shelves}: shelves[r] is the series on shelf r (null for an empty one), and
+  // series the first of them.
   function wall(seriesList, readingId) {
     const out = [];
+    let shared = null;
     seriesList.forEach((series, index) => {
       const bays = fill(places(series), readingId);
-      bays.forEach((rows, part) => out.push({ series, index, part, parts: bays.length, rows, span: span(rows) }));
+      const small = bays.length === 1 && bays[0].filter((r) => r.length).length <= 1;
+      if (small && shared && shared.used < ROWS) {
+        shared.rows[shared.used] = bays[0][0];
+        shared.shelves[shared.used++] = series;
+        return;
+      }
+      bays.forEach((rows, part) => out.push({ series, index, part, parts: bays.length, rows, span: span(rows), shelves: rows.map(() => series) }));
+      shared = small ? Object.assign(out[out.length - 1], { used: 1 }) : null;
+      if (shared) shared.shelves = [series, null, null];
     });
+    for (const b of out) delete b.used;
     return out;
   }
+
+  // the series sharing a bay, in shelf order
+  const members = (bay) => [...new Set(bay.shelves.filter(Boolean))];
 
   // the bay holding a volume, or -1
   const bayOf = (bays, id) => bays.findIndex((b) => b.rows.some((r) => r.some((p) => p.vol && p.vol.id === id)));
@@ -132,7 +157,7 @@ const Rotunda = (() => {
     return `hsl(${h}, 38%, 38%)`;
   }
 
-  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, angle, radius, front, rotationFor, offset, lit, visible, places, width, fill, span, wall, bayOf, colour };
+  return { MIN_BAYS, ROWS, PER_ROW, FACE, RUN, squeeze, bayCount, step, angle, radius, front, rotationFor, offset, lit, visible, places, width, fill, span, wall, members, bayOf, colour };
 })();
 
 if (typeof module !== "undefined") module.exports = Rotunda;

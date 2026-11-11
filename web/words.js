@@ -129,7 +129,9 @@ const Words = (() => {
   // the bay of a series in the contents: the first one it stands on
   function contents(bays) {
     const seen = new Map();
-    bays.forEach((b, i) => !seen.has(b.series.name) && seen.set(b.series.name, { series: b.series, bay: i }));
+    bays.forEach((b, i) => {
+      for (const s of b.shelves ? b.shelves.filter(Boolean) : [b.series]) if (!seen.has(s.name)) seen.set(s.name, { series: s, bay: i });
+    });
     return [...seen.values()].sort((a, b) => a.series.name.localeCompare(b.series.name, undefined, { sensitivity: "base", numeric: true }));
   }
 
@@ -162,11 +164,24 @@ const Words = (() => {
     return [pageUrl(v.id, first), first + 1 < count ? pageUrl(v.id, first + 1) : null];
   }
 
-  // how much of a series is read: volumes done, started, still to read
+  // a series' tomes: a tome kept in several formats (an EPUB and a PDF) counts once,
+  // read when one of its files is
+  function tomesOf(s) {
+    const by = new Map();
+    s.volumes.forEach((v, i) => {
+      const key = v.number ? Math.floor(v.number) : `#${i}`;
+      const was = by.get(key);
+      by.set(key, was ? { done: was.done || v.done, pages: was.pages || v.pages } : v);
+    });
+    return [...by.values()];
+  }
+
+  // how much of a series is read: tomes done, started, still to read
   function readCounts(s) {
-    const done = s.volumes.filter((v) => v.done).length;
-    const started = s.volumes.filter((v) => v.pages && !v.done).length;
-    return { done, started, unread: s.volumes.length - done - started, total: s.volumes.length };
+    const tomes = tomesOf(s);
+    const done = tomes.filter((v) => v.done).length;
+    const started = tomes.filter((v) => v.pages && !v.done).length;
+    return { done, started, unread: tomes.length - done - started, total: tomes.length };
   }
 
   // what a bay's plaque says: the series, how much is read, and which tomes when it

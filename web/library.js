@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions, decorUrl } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions, decorUrl, readCounts } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -138,6 +138,13 @@ const Ohara = (() => {
       inner.append(el("span", "plaque blank", "·"), el("div", "ledge"), el("div", "ledge"), el("div", "ledge"));
       return node;
     }
+    if (R.members(b).length > 1) sharedBay(b, i, inner);
+    else ownBay(b, i, inner);
+    return node;
+  }
+
+  // a series' own bay (or bays): its decor, its plaque, its tomes
+  function ownBay(b, i, inner) {
     // the series' own decor: the image chosen on its sheet (its AniList banner by
     // default) on the back of the bay, its colour on the plaque
     const back = decorUrl(b.series);
@@ -156,7 +163,25 @@ const Ohara = (() => {
       inner.append(ledge);
     }
     inner.onclick = () => openSeries(b.series, i);
-    return node;
+  }
+
+  // a bay shared by small series: each on its own shelf, its name on a small plaque
+  function sharedBay(b, i, inner) {
+    inner.classList.add("shared");
+    inner.append(el("span", "plaque blank", "·"));
+    b.rows.forEach((row, r) => {
+      const s = b.shelves[r];
+      const ledge = el("div", "ledge");
+      if (s) {
+        const text = plaqueText({ series: s, part: 0, parts: 1 });
+        const label = button(text.title, "shelf-plaque", () => openSeries(s, i));
+        label.style.setProperty("--tint", R.colour(s.name, s.meta.color));
+        label.append(el("small", "", text.sub));
+        ledge.append(label, ...row.map((p) => (p.vol ? spine(p.vol, s, readingId()) : hole(p, s, i))));
+        ledge.onclick = () => openSeries(s, i);
+      }
+      inner.append(ledge);
+    });
   }
 
   function drawRotunda() {
@@ -350,7 +375,7 @@ const Ohara = (() => {
       });
       const dot = el("span", "dot");
       dot.style.background = R.colour(series.name, series.meta.color);
-      row.append(dot, el("b", "", series.name), el("small", "", W().volumes(series.volumes.length)));
+      row.append(dot, el("b", "", series.name), el("small", "", W().volumes(readCounts(series).total)));
       return row;
     });
     box.replaceChildren(el("h4", "", W().contents), ...list);

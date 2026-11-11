@@ -95,6 +95,12 @@ button { font: inherit; color: inherit; }
   font: 600 calc(var(--s) * 19px)/1 var(--display); color: #f2dcb0; letter-spacing: .02em; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .plaque small { display: block; text-align: center; font: italic 400 12px/1.2 var(--display); color: #d6b98c; margin-top: 2px; }
 .plaque.blank { visibility: hidden; }
+/* a bay shared by small series: a small plaque over each one's shelf */
+.bay-in.shared .vol { height: 70%; }
+.shelf-plaque { position: absolute; z-index: 1; top: 6px; left: 50%; transform: translateX(-50%); max-width: 88%; padding: 3px 12px 4px; border: 0; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 30%, #6e4627), color-mix(in srgb, var(--tint) 22%, #4e311b)); box-shadow: inset 0 1px 0 rgba(255,220,170,.25), 0 2px 5px rgba(0,0,0,.4);
+  font: 600 calc(var(--s) * 15px)/1 var(--display); color: #f2dcb0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shelf-plaque small { display: block; font: italic 400 11px/1.2 var(--display); color: #d6b98c; }
 .ledge { position: relative; min-height: 0; display: flex; align-items: flex-end; justify-content: center; gap: 2px; padding: 0 12px; border-bottom: 9px solid var(--wood); }
 .ledge::after { content: ""; position: absolute; left: 0; right: 0; bottom: -12px; height: 4px; background: rgba(0,0,0,.35); }
 .vol { position: relative; width: calc(var(--bw) / 14); height: 86%; border: 0; padding: 0; border-radius: 2px 2px 0 0; cursor: pointer;
