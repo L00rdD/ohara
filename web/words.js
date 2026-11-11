@@ -192,9 +192,14 @@ const Words = (() => {
     return next ? { ...next, page: 0, series: s.name, meta: s.meta } : last;
   }
 
-  // what is said under the lectern of the place selected on a shelf
+  // what is said under the lectern of the place selected on a shelf: a volume, where
+  // you are in it and the chapters it holds when Wikipedia lists them
   function selectionText(place, series) {
-    if (place.vol) return { title: `${series.name}, ${volumeName(place.vol).toLowerCase()}`, state: readingState(place.vol) };
+    const v = place.vol;
+    if (v) {
+      const said = [readingState(v), v.chapters && W().chapters(v.chapters[0], v.chapters[1])].filter(Boolean);
+      return { title: `${series.name}, ${volumeName(v).toLowerCase()}`, state: said.join(" · ") };
+    }
     const [a, b] = place.run || [place.gap, place.gap];
     return { title: `${series.name}, ${W().tomes(a, b).toLowerCase()}`, state: W().toGet };
   }

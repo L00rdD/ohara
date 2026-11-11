@@ -43,7 +43,9 @@ Tree of Knowledge.
   remettre à zéro* (touched twice), and each volume's ⋯ menu marks it read, reads up
   to it (handy for a series already read on paper) or puts it back to unread. On the
   shelves, touching a volume pins a card under the lectern: read it, mark it read (or
-  back to unread), or open its series' sheet; touching it again opens it.
+  back to unread), or open its series' sheet; touching it again opens it. The card
+  says which chapters the volume holds, read from the English Wikipedia's lists of
+  chapters for the series that have one.
 - **The back of the shelves.** A series' bays wear its AniList banner by default; its
   sheet lets you put its AniList cover there instead, bare wood, a volume's cover (from
   that volume's ⋯ menu), or an image of its own: sent from the phone or the computer,
@@ -150,7 +152,7 @@ and JavaScript for the pages: `i18n.js` (the words in French and English),
 `words.js` (what is said and shown, decided from the data), `rotunda.js` (the
 rotunda's geometry and what each bay holds), `library.js` (the page),
 `robin.py` (what a spine needs, read from a cover), `franky.py` (a volume rebuilt
-lighter), `brook.py` (which soundtrack,
+lighter), `chapters.py` (the chapters of each volume, from Wikipedia), `brook.py` (which soundtrack,
 and the titles of its tracks), `ui.js`, `search.js` and `settings.js` (the drawer of
 the search and the settings), `music.js` and `player.js` (the reader's music), `sheet.js` (a series' sheet),
 `reader.js` (the reader).

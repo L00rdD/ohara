@@ -211,6 +211,8 @@ test("what is said of the place selected", () => {
   const s = { name: "Naruto" };
   assert.deepEqual(fr(() => Ohara.selectionText({ vol: vol({ number: 12, pages: 180, page: 2 }) }, s)), { title: "Naruto, tome 12", state: "page 3 sur 180" });
   assert.deepEqual(fr(() => Ohara.selectionText({ run: [1, 97] }, s)), { title: "Naruto, tomes 1 à 97", state: "à récupérer" });
+  assert.deepEqual(fr(() => Ohara.selectionText({ vol: vol({ number: 19, chapters: [162, 171] }) }, s)).state.split(" · ")[1], "chapitres 162 à 171");
+  assert.equal(en(() => Ohara.selectionText({ vol: vol({ number: 2, chapters: [9, 9] }) }, s)).state.split(" · ")[1], "chapter 9");
   assert.deepEqual(en(() => Ohara.selectionText({ gap: 7 }, s)), { title: "Naruto, volume 7", state: "to get" });
 });
 

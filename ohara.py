@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import brook  # noqa: E402
+import chapters  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
@@ -68,7 +69,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky"):
+    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters"):
         state.setdefault(key, {})
     return state
 
@@ -662,6 +663,7 @@ def tick():
     check_downloads()
     read_spines()
     brook_pass()
+    chapters_pass()
     if follows_due():
         check_follows()
 
@@ -673,6 +675,32 @@ def watch():
         except Exception as e:  # Transmission restarting, a disk hiccup: try again later
             print("watch:", e, flush=True)
         time.sleep(30)
+
+
+# ---------- the chapters of each volume, from Wikipedia (see chapters.py) ----------
+
+CHAPTERS_AGAIN = 30 * 86400  # a series' chapters are read again a month later
+
+
+def chapters_pass():
+    """Reads the chapters of one series whose are missing or a month old: one series a
+    pass, not to weigh on Wikipedia."""
+    state = load_state()
+    now = time.time()
+    for name in sorted(library_names(), key=natural):
+        if now - state["chapters"].get(name, {}).get("at", 0) > CHAPTERS_AGAIN:
+            meta = state["lookups"].get(norm(name)) or {}
+            try:
+                names = dict.fromkeys(n for n in [name, meta.get("title"), *meta.get("names", [])] if n)
+                found = chapters.chapters(list(names))
+            except Exception as e:  # Wikipedia away: next pass
+                print(f"chapters {name}:", e, flush=True)
+                return
+
+            def change(state):
+                state["chapters"][name] = {"at": now, "volumes": {str(k): v for k, v in found.items()}}
+            update_state(change)
+            return
 
 
 # ---------- Robin: what each volume's spine needs, read from its cover ----------
@@ -1088,6 +1116,10 @@ def library_names():
 
 def series_info(d, state):
     vols = [volume_info(v, state["progress"], state["spines"]) for v in volumes(d)]
+    known = state["chapters"].get(d.name, {}).get("volumes", {})
+    for v in vols:
+        whole = v["number"] and v["number"] == int(v["number"])
+        v["chapters"] = known.get(str(int(v["number"]))) if whole else None
     entry = state["series"].get(d.name, {})
     meta = state["lookups"].get(norm(d.name)) or {}
     numbers = {int(v["number"]) for v in vols if v["number"]}

@@ -724,7 +724,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}})
 
 
 class Http(Reading):
@@ -1199,6 +1199,103 @@ class Franky(Library):
                 mock.patch.object(ohara.time, "sleep", side_effect=StopIteration), self.assertRaises(StopIteration):
             ohara.franky_loop()
         one.assert_not_called()
+
+
+NUMBERED_PAGE = """
+{{Graphic novel list
+| VolumeNumber    = 1
+| ChapterListCol1 =
+{{Numbered list|start=1
+|{{Nihongo|"Ryomen Sukuna"|両面宿儺}}
+|{{Nihongo|"For Myself"|自分のために}}
+}}
+| ChapterListCol2 = {{Numbered list|start=3
+|{{Nihongo|"Girl of Steel"|鋼の少女}}
+|
+}}
+| LicensedTitle = Ryomen Sukuna
+}}
+{{Graphic novel list
+| VolumeNumber    = {{0}}2
+| ChapterListCol1 = <!--{{Numbered list|start=4
+|{{Nihongo|"Not yet"|まだ}}
+}}-->
+}}
+== Chapters not yet in tankōbon format ==
+{{Numbered list|start=4
+|"Later"
+}}
+"""
+
+HASHED_PAGE = """
+{{Graphic novel list
+| VolumeNumber=1
+| ChapterList=
+#<li value="1">{{nihongo|"Uzumaki Naruto!"|うずまきナルト!}}</li>
+#{{nihongo-s|"Konohamaru"|木ノ葉丸}}
+| LicensedTitle=The Tests of the Ninja
+}}
+{{Graphic novel list
+| VolumeNumber=2
+| ChapterList=
+#{{nihongo-s|"The Worst Client"|最悪の依頼人}}
+}}
+"""
+
+
+class Chapters(Library):
+    """The chapters each volume holds, from Wikipedia's lists."""
+
+    def test_numbered_lists_and_volumes_to_come(self):
+        self.assertEqual(ohara.chapters.read(NUMBERED_PAGE), {1: [1, 3]})
+
+    def test_hashed_lists_go_on_from_the_volume_before(self):
+        self.assertEqual(ohara.chapters.read(HASHED_PAGE), {1: [1, 2], 2: [3, 3]})
+
+    def test_a_series_pages_and_its_names(self):
+        answers = {
+            "List of Jujutsu Kaisen chapters": ["Lists of Jujutsu Kaisen chapters", "List of Jujutsu Kaisen chapters (1–3)", "List of Jujutsu Kaisen chapters (4–6)", "List of Jujutsu Kaisen chapters spin-off"],
+        }
+
+        def ask(params):
+            if params["action"] == "query":
+                return {"query": {"prefixsearch": [{"title": t} for t in answers.get(params["pssearch"], [])]}}
+            return {"parse": {"wikitext": NUMBERED_PAGE if "1–3" in params["page"] else HASHED_PAGE.replace("=1\n", "=4\n").replace("=2\n", "=5\n")}}
+        with mock.patch.object(ohara.chapters, "ask", side_effect=ask):
+            self.assertEqual(ohara.chapters.list_pages("Jujutsu Kaisen"), ["List of Jujutsu Kaisen chapters (1–3)", "List of Jujutsu Kaisen chapters (4–6)"])
+            self.assertEqual(ohara.chapters.chapters(["Sorcery Fight", "Jujutsu Kaisen"]), {1: [1, 3], 4: [1, 2], 5: [3, 3]})
+            self.assertEqual(ohara.chapters.chapters(["Nobody"]), {})
+
+    def test_wikipedia_is_asked_politely(self):
+        answer = mock.MagicMock()
+        answer.__enter__.return_value = io.BytesIO(b'{"ok": 1}')
+        with mock.patch.object(ohara.chapters.urllib.request, "urlopen", return_value=answer) as get:
+            self.assertEqual(ohara.chapters.ask({"action": "query"}), {"ok": 1})
+        req = get.call_args[0][0]
+        self.assertIn("formatversion=2", req.full_url)
+        self.assertIn("Ohara", req.get_header("User-agent"))
+        with mock.patch.object(ohara.chapters, "ask", return_value={"parse": {"wikitext": "x"}}):
+            self.assertEqual(ohara.chapters.wikitext("T"), "x")
+
+    def test_one_series_a_pass_and_on_its_volumes(self):
+        cbz(self.root / "Naruto" / "Naruto T01.cbz", ["1.png"])
+        cbz(self.root / "Naruto" / "Naruto T01.5.cbz", ["1.png"])
+        cbz(self.root / "Zetman" / "Zetman T01.cbz", ["1.png"])
+        ohara.save_state({"lookups": {"naruto": {"title": "Naruto", "names": ["NARUTO", "Naruto"]}}})
+        with mock.patch.object(ohara.chapters, "chapters", return_value={1: [1, 7]}) as read:
+            ohara.chapters_pass()
+            ohara.chapters_pass()
+            ohara.chapters_pass()  # both done: nothing more this month
+        self.assertEqual([c.args[0] for c in read.call_args_list], [["Naruto", "NARUTO"], ["Zetman"]])
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            naruto = next(s for s in ohara.library()["series"] if s["name"] == "Naruto")
+        self.assertEqual({v["number"]: v["chapters"] for v in naruto["volumes"]}, {1: [1, 7], 1.5: None})
+        state = ohara.load_state()
+        state["chapters"]["Naruto"]["at"] = 0
+        ohara.save_state(state)
+        with mock.patch.object(ohara.chapters, "chapters", side_effect=OSError("away")):
+            ohara.chapters_pass()  # said, and tried again next pass
+        self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
 
 
 def mp3(title):
