@@ -30,7 +30,7 @@ const Reader = (() => {
 
   // ---- the page ----
   const $ = (id) => document.getElementById(id);
-  const vid = new URLSearchParams(location.search).get("vol");
+  let vid = new URLSearchParams(location.search).get("vol");
   const pref = (key, fallback) => localStorage.getItem("ohara-" + key) || fallback;
   const settings = {
     double: pref("mode", innerWidth > innerHeight * 1.2 ? "double" : "single") === "double",
@@ -91,6 +91,18 @@ const Reader = (() => {
     $("end").hidden = false;
   }
 
+  // a volume opens in the same page, so the music goes on from one volume to the next
+  async function openVolume(id) {
+    vid = id;
+    info = await (await fetch("/api/pages?vol=" + encodeURIComponent(vid))).json();
+    document.title = `${info.series} · ${info.label}`;
+    $("title").textContent = document.title;
+    $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
+    $("slider").max = info.count;
+    if (typeof Player !== "undefined") Player.open(info.series);
+    go(info.page >= info.count - 1 ? 0 : info.page);
+  }
+
   // the bars: shown by the corner button, or for a few seconds while the mouse moves
   let barsTimer = null;
   const toggleBars = () => document.body.classList.toggle("bars");
@@ -118,11 +130,11 @@ const Reader = (() => {
     for (const e of document.querySelectorAll("[data-w]")) e.textContent = I18n.words()[e.dataset.w];
     document.documentElement.lang = I18n.get();
     $("menu").title = I18n.words().menu;
-    info = await (await fetch("/api/pages?vol=" + encodeURIComponent(vid))).json();
-    document.title = `${info.series} · ${info.label}`;
-    $("title").textContent = document.title;
-    $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
-    $("slider").max = info.count;
+    $("next-volume").onclick = (e) => {
+      e.preventDefault();
+      history.replaceState(null, "", $("next-volume").href);
+      openVolume(info.next);
+    };
     $("slider").oninput = (e) => go(+e.target.value - 1);
     $("stage").onclick = (e) => (zone(e.clientX / innerWidth) === "next" ? next() : prev());
     $("menu").onclick = toggleBars;
@@ -131,7 +143,7 @@ const Reader = (() => {
     $("fit").onclick = () => setting("fit", settings.fit === "height" ? "width" : "height");
     $("end-stay").onclick = () => go(page);
     addEventListener("keydown", keys);
-    go(info.page >= info.count - 1 ? 0 : info.page);
+    await openVolume(vid);
   }
 
   start();

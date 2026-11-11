@@ -229,7 +229,7 @@ class AniList(Library):
     def test_fetch(self):
         with mock.patch.object(ohara, "http_json", return_value=self.ANSWER) as call:
             meta = ohara.anilist_fetch("frieren")
-        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "banner": None, "status": "En cours", "volumes": None, "year": 2020})
+        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "banner": None, "names": ["Sousou no Frieren"], "status": "En cours", "volumes": None, "year": 2020})
         self.assertEqual(call.call_args.kwargs["headers"]["User-Agent"], "Ohara/1.0")
         with mock.patch.object(ohara, "http_json", return_value={"data": {"Page": {"media": []}}}):
             self.assertEqual(ohara.anilist_fetch("zzz"), {})
@@ -246,14 +246,15 @@ class AniList(Library):
         self.assertIs(ohara.best_match("B.P.", [found[0], by_synonym]), by_synonym)
 
     def test_lookup_is_kept(self):
-        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5, "banner": None}) as fetch:
-            self.assertEqual(ohara.lookup("Frieren"), {"id": 5, "banner": None})
-            self.assertEqual(ohara.lookup("frieren!"), {"id": 5, "banner": None})
+        found = {"id": 5, "banner": None, "names": []}
+        with mock.patch.object(ohara, "anilist_fetch", return_value=found) as fetch:
+            self.assertEqual(ohara.lookup("Frieren"), found)
+            self.assertEqual(ohara.lookup("frieren!"), found)
         fetch.assert_called_once()
 
     def test_answers_without_a_banner_are_asked_again(self):
         ohara.save_state({"lookups": {"frieren": {"id": 5}}})
-        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5, "banner": "b.jpg"}) as fetch:
+        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 5, "banner": "b.jpg", "names": []}) as fetch:
             self.assertEqual(ohara.lookup("Frieren")["banner"], "b.jpg")
             ohara.lookup("Frieren")
         fetch.assert_called_once()
@@ -525,7 +526,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}})
 
 
 class Http(Reading):
@@ -541,6 +542,30 @@ class Http(Reading):
         getattr(h, "do_" + method)()
         head, _, payload = h.wfile.getvalue().partition(b"\r\n\r\n")
         return int(head.split()[1]), head.decode(), payload
+
+    def call_range(self, path, rng):
+        h = ohara.Handler.__new__(ohara.Handler)
+        h.path, h.command, h.request_version, h.requestline = path, "GET", "HTTP/1.1", ""
+        h.headers = {"Content-Length": "0", "Range": rng}
+        h.rfile, h.wfile = io.BytesIO(b""), io.BytesIO()
+        h.client_address = ("10.0.0.2", 5000)
+        h.server = mock.Mock()
+        h.close_connection = True
+        h.do_GET()
+        head, _, payload = h.wfile.getvalue().partition(b"\r\n\r\n")
+        return int(head.split()[1]), head.decode(), payload
+
+    def test_music_routes(self):
+        with mock.patch.object(ohara, "music", return_value={"albums": []}):
+            self.assertEqual(json.loads(self.call("GET", "/api/music?series=N")[2]), {"albums": []})
+        with mock.patch.object(ohara, "find_soundtracks", return_value=[{"token": "t", "_url": "x"}]):
+            self.assertEqual(json.loads(self.call("GET", "/api/soundtracks?series=N")[2]), [{"token": "t"}])
+        with mock.patch.object(ohara, "grab_music", return_value={"state": "downloading"}) as grab:
+            self.assertEqual(self.call("POST", "/api/music", {"series": "N"})[0], 200)
+        grab.assert_called_once_with("N", None)
+        with mock.patch.object(ohara, "set_mood", return_value={"moods": []}) as mood:
+            self.call("POST", "/api/mood", {"series": "N", "name": "Calme", "tracks": ["a"]})
+        mood.assert_called_once_with("N", "Calme", ["a"])
 
     def test_pages_api(self):
         code, _, body = self.call("GET", "/api/pages?vol=Naruto%2FNaruto%20T01.cbz")
@@ -581,8 +606,8 @@ class Http(Reading):
             self.assertEqual(json.loads(self.call("GET", "/api/indexers")[2]), [{"name": "X"}])
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
-        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome"})
-        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre"})[2]), {"spines": "sobre"})
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True})
+        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False})[2]), {"spines": "sobre", "brook": False})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
         ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
         code, head, _ = self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")
@@ -721,9 +746,10 @@ class Follow(Library):
         ohara.save_state({"followed_at": ohara.time.time()})
         self.assertFalse(ohara.follows_due())
         with mock.patch.object(ohara, "check_downloads") as downloads, mock.patch.object(ohara, "check_follows") as follows, \
-                mock.patch.object(ohara, "read_spines") as spines:
+                mock.patch.object(ohara, "read_spines") as spines, mock.patch.object(ohara, "brook_pass") as brook:
             ohara.tick()
         spines.assert_called_once()
+        brook.assert_called_once()
         downloads.assert_called_once()
         follows.assert_not_called()
 
@@ -806,9 +832,192 @@ class Robin(Library):
         self.assertEqual(ohara.load_state()["spines"], {})
 
     def test_spine_style_setting(self):
-        self.assertEqual(ohara.settings(), {"spines": "tome"})
-        self.assertEqual(ohara.set_settings({"spines": "reliure"}), {"spines": "reliure"})
-        self.assertEqual(ohara.set_settings({"spines": "neon"}), {"spines": "reliure"})
+        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True})
+        self.assertEqual(ohara.set_settings({"spines": "reliure"})["spines"], "reliure")
+        self.assertEqual(ohara.set_settings({"spines": "neon", "brook": "yes"}), {"spines": "reliure", "brook": True})
+
+
+def mp3(title):
+    """A tiny MP3 with an ID3v2.3 TIT2 frame."""
+    text = b"\x03" + title.encode()
+    frame = b"TIT2" + len(text).to_bytes(4, "big") + b"\x00\x00" + text
+    size = len(frame)
+    syncsafe = bytes([(size >> 21) & 0x7F, (size >> 14) & 0x7F, (size >> 7) & 0x7F, size & 0x7F])
+    return b"ID3\x03\x00\x00" + syncsafe + frame + b"\xff\xfb" + b"\x00" * 64
+
+
+def flac(title):
+    """A tiny FLAC head: STREAMINFO, then a Vorbis comment with TITLE."""
+    vendor = b"ohara"
+    comment = f"TITLE={title}".encode()
+    block = len(vendor).to_bytes(4, "little") + vendor + (1).to_bytes(4, "little") + len(comment).to_bytes(4, "little") + comment
+    streaminfo = b"\x00" + (34).to_bytes(3, "big") + b"\x00" * 34
+    return b"fLaC" + streaminfo + bytes([0x84]) + len(block).to_bytes(3, "big") + block
+
+
+class BrookPicks(unittest.TestCase):
+    def rel(self, title, cats=(3000,), seeders=5, size=500e6):
+        return {"title": title, "categories": [{"id": c} for c in cats], "seeders": seeders, "size": size}
+
+    def test_soundtracks_only(self):
+        import brook
+        names = brook.names_of("Frieren", {"names": ["Sousou no Frieren", "Frieren: Beyond Journey's End", "F"]})
+        self.assertIn("sousounofrieren", names)
+        self.assertNotIn("f", names)
+        self.assertTrue(brook.is_soundtrack(self.rel("[ZAIA] Frieren Beyond Journey's End Original Soundtrack"), names))
+        self.assertTrue(brook.is_soundtrack(self.rel("葬送のフリーレン Sousou no Frieren サウンドトラック", cats=(3040,)), names))
+        self.assertFalse(brook.is_soundtrack(self.rel("Frieren OST", cats=(5070,)), names))
+        self.assertFalse(brook.is_soundtrack(self.rel("Frieren Vol. 1 Unabridged Audiobook OST"), names))
+        self.assertFalse(brook.is_soundtrack(self.rel("Frieren Opening Single"), names))
+        self.assertFalse(brook.is_soundtrack(self.rel("Naruto OST"), names))
+
+    def test_best_first(self):
+        import brook
+        found = [
+            self.rel("A OST Collection", seeders=11, size=4.9e9),
+            self.rel("A OST [FLAC]", seeders=3, size=900e6),
+            self.rel("A OST (MP3 320)", seeders=2, size=300e6),
+            self.rel("A OST mp3", seeders=0, size=600e6),
+            self.rel("A Soundtrack", seeders=9, size=700e6),
+        ]
+        self.assertEqual([r["title"] for r in sorted(found, key=brook.best_first)],
+                         ["A OST (MP3 320)", "A Soundtrack", "A OST [FLAC]", "A OST Collection", "A OST mp3"])
+        self.assertEqual(brook.size_penalty(1e9), 0)
+        self.assertGreater(brook.size_penalty(10e9), brook.size_penalty(5e9))
+
+    def test_titles(self):
+        import brook
+        self.assertEqual(brook.clean_title("01 - We Are!"), "We Are!")
+        self.assertEqual(brook.clean_title("Disc 2 - 07_Overtaken"), "Overtaken")
+        self.assertEqual(brook.clean_title("12. Binks no Sake"), "Binks no Sake")
+        self.assertEqual(brook.clean_title("Interlude"), "Interlude")
+        self.assertEqual(brook.clean_title("01"), "01")
+        self.assertEqual(brook.track_title(Path("x/01 - a.mp3"), mp3("Mabataki")), "Mabataki")
+        self.assertEqual(brook.track_title(Path("x/02 - b.flac"), flac("Zoltraak")), "Zoltraak")
+        self.assertEqual(brook.track_title(Path("x/03 - Untagged.mp3"), b"\xff\xfb\x00"), "Untagged")
+        self.assertEqual(brook.track_title(Path("x/04 - Ogg.ogg"), b""), "Ogg")
+        self.assertIsNone(brook.flac_title(b"fLaC" + bytes([0x80]) + (4).to_bytes(3, "big") + b"\x00" * 4))
+        self.assertIsNone(brook.id3_title(b"ID3\x04\x00\x00\x00\x00\x00\x0a" + b"\x00" * 10))
+        self.assertIsNone(brook.decode_text(b""))
+
+    def test_album_of(self):
+        import brook
+        self.assertEqual(brook.album_of("Season 1/01 - a.mp3"), "Season 1")
+        self.assertEqual(brook.album_of("01 - a.mp3"), "")
+
+
+class Brook(Library):
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(ohara, "MUSIC", self.root / ".ost")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_find_soundtracks(self):
+        results = [
+            {"guid": "a", "title": "Frieren Original Soundtrack [FLAC]", "categories": [{"id": 3000}], "seeders": 20, "size": 3e8, "indexer": "Nyaa.si"},
+            {"guid": "b", "title": "Frieren T01 [CBZ]", "categories": [{"id": 7000}], "seeders": 50, "size": 3e8, "indexer": "Nyaa.si"},
+        ]
+        with mock.patch.object(ohara, "lookup", return_value={"names": ["Sousou no Frieren"]}), \
+                mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "indexer_ids", return_value=[1]), \
+                mock.patch.object(ohara, "http_json", return_value=results) as http:
+            found = ohara.find_soundtracks("Frieren")
+        self.assertEqual([r["title"] for r in found], ["Frieren Original Soundtrack [FLAC]"])
+        self.assertIn("categories=3000", http.call_args_list[0][0][0])
+
+    def test_grab_the_best_or_say_none(self):
+        best = {"token": "t1", "title": "Frieren OST", "seeders": 3, "_url": "magnet:?x"}
+        with mock.patch.object(ohara, "find_soundtracks", return_value=[dict(best, seeders=0)]):
+            self.assertEqual(ohara.grab_music("Frieren"), {"state": "notfound"})
+        with mock.patch.object(ohara, "find_soundtracks", return_value=[best]), \
+                mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H"}}) as rpc:
+            status = ohara.grab_music("Frieren")
+        self.assertEqual(status, {"state": "downloading", "title": "Frieren OST"})
+        self.assertIn("/ost-", rpc.call_args[0][1]["download-dir"])
+        self.assertEqual(ohara.load_state()["downloads"]["H"]["kind"], "ost")
+        ohara.found_releases["t2"] = dict(best, token="t2")
+        with mock.patch.object(ohara, "rpc", return_value={"torrent-duplicate": {"hashString": "H2"}}):
+            ohara.grab_music("Frieren", "t2")
+        with self.assertRaises(KeyError):
+            ohara.grab_music("Frieren", "unknown")
+
+    def test_import_by_album_with_covers_and_archives(self):
+        src = self.root / ".incoming" / "ost-1"
+        (src / "Frieren OST" / "Disc 1").mkdir(parents=True)
+        (src / "Frieren OST" / "Disc 1" / "01 - Zoltraak.flac").write_bytes(flac("Zoltraak"))
+        (src / "Frieren OST" / "Disc 1" / "folder.jpg").write_bytes(b"jpg")
+        (src / "loose.mp3").write_bytes(mp3("Loose"))
+        (src / "Bonus.zip").write_bytes(b"zip")
+
+        def fake_7z(cmd, check, capture_output):
+            out = Path(cmd[3][2:])
+            out.mkdir()
+            (out / "Bonus 1.mp3").write_bytes(mp3("Extra"))
+
+        with mock.patch("subprocess.run", side_effect=fake_7z):
+            self.assertEqual(ohara.import_music(src, "Frieren"), 3)
+        found = {a["name"]: a for a in ohara.albums("Frieren")}
+        self.assertEqual(set(found), {"Disc 1", "Bonus", "Frieren"})
+        self.assertEqual(found["Disc 1"]["tracks"][0]["title"], "Zoltraak")
+        self.assertEqual(found["Disc 1"]["art"], "Frieren/Disc 1/cover.jpg")
+        self.assertEqual(found["Frieren"]["tracks"], [{"id": "Frieren/Frieren/loose.mp3", "title": "Loose"}])
+        self.assertEqual(ohara.music_status("Frieren"), {"state": "ready"})
+        empty = self.root / ".incoming" / "ost-2"
+        empty.mkdir(parents=True)
+        self.assertEqual(ohara.import_music(empty, "Empty"), 0)
+        self.assertEqual(ohara.music_status("Empty"), {"state": "notfound"})
+
+    def test_music_moods_and_paths(self):
+        folder = self.root / ".ost" / "Frieren" / "Season 1"
+        folder.mkdir(parents=True)
+        (folder / "01 - a.mp3").write_bytes(mp3("Journey"))
+        m = ohara.music("Frieren")
+        self.assertEqual(m["status"], {"state": "ready"})
+        self.assertEqual(m["albums"][0]["tracks"], [{"id": "Frieren/Season 1/01 - a.mp3", "title": "Journey"}])
+        self.assertEqual(ohara.set_mood("Frieren", " Calme ", ["Frieren/Season 1/01 - a.mp3", 3])["moods"], [{"name": "Calme", "tracks": ["Frieren/Season 1/01 - a.mp3"]}])
+        self.assertEqual(ohara.set_mood("Frieren", "Calme", [])["moods"], [])
+        with self.assertRaises(KeyError):
+            ohara.set_mood("Frieren", " ", ["x"])
+        self.assertEqual(ohara.music_path("Frieren/Season 1/01 - a.mp3").name, "01 - a.mp3")
+        for bad in ("../state.json", "Frieren/none.mp3"):
+            with self.assertRaises(KeyError):
+                ohara.music_path(bad)
+        self.assertEqual(ohara.albums("Nothing"), [])
+
+    def test_brook_pass_one_series_at_a_time(self):
+        for name in ("Berserk", "Frieren"):
+            cbz(self.root / name / "T01.cbz", ["1.png"])
+        ohara.set_settings({"brook": False})
+        self.assertIsNone(ohara.brook_pass())
+        ohara.set_settings({"brook": True})
+        with mock.patch.object(ohara, "grab_music", return_value={"state": "downloading"}) as grab:
+            self.assertEqual(ohara.brook_pass(), {"state": "downloading"})
+        grab.assert_called_once_with("Berserk")
+        ohara.set_music("Berserk", state="downloading")
+        with mock.patch.object(ohara, "grab_music", side_effect=OSError("prowlarr away")):
+            self.assertIsNone(ohara.brook_pass())
+        self.assertEqual(ohara.music_status("Frieren"), {"state": "none"})
+        ohara.set_music("Frieren", state="notfound")
+        self.assertIsNone(ohara.brook_pass())
+
+    def test_track_streaming_with_ranges(self):
+        folder = self.root / ".ost" / "Frieren"
+        folder.mkdir(parents=True)
+        (folder / "a.mp3").write_bytes(bytes(range(100)))
+        (folder / "cover.jpg").write_bytes(b"jpg")
+        fake = Http("test_log_is_quiet")
+        fake.root = self.root
+        code, head, body = fake.call("GET", "/api/track?id=Frieren/a.mp3")
+        self.assertEqual((code, len(body)), (200, 100))
+        self.assertIn("audio/mpeg", head)
+        code, head, body = fake.call_range("/api/track?id=Frieren/a.mp3", "bytes=10-19")
+        self.assertEqual((code, body), (206, bytes(range(10, 20))))
+        self.assertIn("Content-Range: bytes 10-19/100", head)
+        code, _, body = fake.call_range("/api/track?id=Frieren/a.mp3", "bytes=-5")
+        self.assertEqual(body, bytes(range(95, 100)))
+        code, _, body = fake.call_range("/api/track?id=Frieren/a.mp3", "bytes=90-")
+        self.assertEqual(body, bytes(range(90, 100)))
+        self.assertEqual(fake.call("GET", "/api/art?id=Frieren/cover.jpg")[2], b"jpg")
 
 
 class Main(Library):

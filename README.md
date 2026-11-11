@@ -26,6 +26,17 @@ Tree of Knowledge.
   Each series' bays wear its AniList banner on their back wall. A long series takes
   as many bays as its volumes need; the contents (≡) list every series A to Z and
   turn the rotunda to it.
+- **Ambient music.** Brook, Ohara's musician, finds the soundtrack of each series that
+  comes in among the indexers' audio releases (its title must name the series, under
+  any of its AniList names, and say OST or soundtrack; with seeders, MP3 over FLAC,
+  a sensible size), downloads it and files it by album in `.ost/<Series>/`, archives
+  opened. In the reader, a ♪ pill opens the player: the ambiences of the series being
+  read (your own ones, its albums, everything shuffled), the track playing with its
+  controls (repeat, volume), and its tracks, each one ready to go into one of your
+  ambiences (Fight, Calm…). The music goes on from one volume to the next, starts
+  again where you left it, and the phone's lock screen controls it. Brook can be
+  switched off in the settings; a series' sheet says what he did and lets you pick
+  another soundtrack. Your own music files can go in `.ost/<Series>/<Album>/` too.
 - **The lectern.** The volume you are reading lies open in the middle of the rotunda,
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.
@@ -90,6 +101,7 @@ manga/
 ├── Frieren/
 │   ├── Frieren T01.cbz
 │   └── …
+├── .ost/           the music of each series, by album
 ├── .incoming/      downloads under way
 └── .ohara/         state.json (downloads, reading progress, followed series,
                     AniList answers) and the covers made from the volumes
@@ -112,7 +124,9 @@ Python 3 with only the standard library, plus Pillow for the covers; plain HTML,
 and JavaScript for the pages: `i18n.js` (the words in French and English),
 `words.js` (what is said and shown, decided from the data), `rotunda.js` (the
 rotunda's geometry and what each bay holds), `library.js` (the page),
-`robin.py` (what a spine needs, read from a cover),
+`robin.py` (what a spine needs, read from a cover), `brook.py` (which soundtrack,
+and the titles of its tracks), `ui.js`, `search.js` and `settings.js` (the drawer of
+the search and the settings), `music.js` and `player.js` (the reader's music),
 `reader.js` (the reader).
 
 ```bash

@@ -25,12 +25,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import brook  # noqa: E402
 import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
                    speed, tome_range, volume_label, volume_number)
 
 MANGA = Path(os.environ.get("OHARA_MANGA", "/manga"))
 STATE_DIR = MANGA / ".ohara"
+MUSIC = MANGA / ".ost"
 INCOMING = MANGA / ".incoming"
 # the same folder as Transmission sees it
 TRANSMISSION_INCOMING = os.environ.get("OHARA_TRANSMISSION_DIR", "/data/manga/.incoming")
@@ -64,7 +66,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings", "spines"):
+    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods"):
         state.setdefault(key, {})
     return state
 
@@ -109,6 +111,7 @@ def anilist_fetch(name):
         "cover": m["coverImage"]["extraLarge"] or m["coverImage"]["large"],
         "color": m["coverImage"]["color"],
         "banner": m.get("bannerImage"),
+        "names": [n for n in [m["title"]["romaji"], m["title"]["english"], *(m.get("synonyms") or [])] if n],
         "status": STATUS.get(m["status"], ""),
         "volumes": m["volumes"],
         "year": (m.get("startDate") or {}).get("year"),
@@ -133,13 +136,18 @@ def best_match(name, found):
     return next(r for r in ranks if r)[0]
 
 
+def fresh(cached):
+    """An AniList answer kept since banners and names are asked for (or a known miss)."""
+    return not cached or ("banner" in cached and "names" in cached)
+
+
 def lookup(name):
     """The AniList facts of a series name, asked once and kept (an empty dict when
     AniList does not know it; nothing kept when it does not answer)."""
     key = norm(name)
     cached = load_state()["lookups"].get(key)
-    # kept answers from before the banners were asked for are asked again
-    if cached is not None and (not cached or "banner" in cached):
+    # kept answers from before the banners and names were asked for are asked again
+    if cached is not None and fresh(cached):
         return cached
     try:
         found = anilist_fetch(name)
@@ -236,13 +244,14 @@ def release(result):
 found_releases = {}
 
 
-def find_releases(query):
-    """Every manga release Prowlarr finds for query, remembered for a grab."""
+def find_releases(query, category=7000, keep=is_manga):
+    """Every release of a category Prowlarr finds for query that keep() accepts (manga
+    volumes by default), remembered for a grab."""
     key = prowlarr_key()
-    # the Books category on the indexers' side: their manga are there, not drowned in videos
-    params = [("query", query), ("type", "search"), ("categories", 7000)] + [("indexerIds", i) for i in indexer_ids(key)]
+    # asking for the category on the indexers' side: manga are under Books, not drowned in videos
+    params = [("query", query), ("type", "search"), ("categories", category)] + [("indexerIds", i) for i in indexer_ids(key)]
     url = f"{PROWLARR_URL}/api/v1/search?" + urllib.parse.urlencode(params)
-    results = [release(r) for r in http_json(url, headers={"X-Api-Key": key}, timeout=150) if is_manga(r)]
+    results = [release(r) for r in http_json(url, headers={"X-Api-Key": key}, timeout=150) if keep(r)]
     for r in results:
         found_releases[r["token"]] = r
     return results
@@ -469,7 +478,10 @@ def check_downloads():
         if not d or t["percentDone"] < 1:
             continue
         source = INCOMING / d["folder"]
-        import_download(source, d["series"])
+        if d.get("kind") == "ost":
+            import_music(source, d["series"])
+        else:
+            import_download(source, d["series"])
         rpc("torrent-remove", {"ids": [t["hashString"]], "delete-local-data": True})
         shutil.rmtree(source, ignore_errors=True)
         update_state(lambda s, h=t["hashString"]: s["downloads"].pop(h, None))
@@ -591,6 +603,7 @@ def follows_due():
 def tick():
     check_downloads()
     read_spines()
+    brook_pass()
     if follows_due():
         check_follows()
 
@@ -650,15 +663,180 @@ def read_spines(limit=10):
 
 
 def settings():
-    return {"spines": load_state()["settings"].get("spines", "tome")}
+    st = load_state()["settings"]
+    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True)}
 
 
 def set_settings(changes):
     def change(state):
         if changes.get("spines") in SPINE_STYLES:
             state["settings"]["spines"] = changes["spines"]
+        if isinstance(changes.get("brook"), bool):
+            state["settings"]["brook"] = changes["brook"]
     update_state(change)
     return settings()
+
+
+# ---------- Brook: the music of each series ----------
+
+MUSIC_RETRY = 7 * 86400  # a series without a soundtrack is looked for again a week later
+
+
+def find_soundtracks(series):
+    """The soundtrack releases of a series, the best first (see brook.best_first)."""
+    meta = lookup(series)
+    names = brook.names_of(series, meta)
+    keep = lambda r: brook.is_soundtrack(r, names)
+    found = {}
+    for query in (f"{series} OST", f"{series} soundtrack"):
+        for r in find_releases(query, category=3000, keep=keep):
+            found[r["token"]] = r
+    return sorted(found.values(), key=brook.best_first)
+
+
+def set_music(series, **status):
+    def change(state):
+        state["music"][series] = dict(status, at=time.time())
+    update_state(change)
+
+
+def grab_music(series, token=None):
+    """Downloads a soundtrack for a series: the release given, or the best Brook finds."""
+    if token:
+        r = found_releases.get(token)
+        if not r:
+            raise KeyError("search again: this result is no longer known")
+    else:
+        found = [r for r in find_soundtracks(series) if r["seeders"] > 0]
+        if not found:
+            set_music(series, state="notfound")
+            return music_status(series)
+        r = found[0]
+    folder = "ost-" + hashlib.sha1(r["token"].encode()).hexdigest()[:10]
+    args = torrent_source(r["_url"])
+    args["download-dir"] = f"{TRANSMISSION_INCOMING}/{folder}"
+    added = rpc("torrent-add", args)
+    t = added.get("torrent-added") or added.get("torrent-duplicate")
+
+    def note(state):
+        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time()}
+        state["music"][series] = {"state": "downloading", "title": r["title"], "at": time.time()}
+    update_state(note)
+    return music_status(series)
+
+
+def unpack_audio(source):
+    """Opens the archives (.zip, .rar, .7z) of a soundtrack where they are."""
+    for p in list(source.rglob("*")):
+        if p.suffix.lower() in (".zip", ".rar", ".7z"):
+            subprocess.run(["7z", "x", "-y", f"-o{p.with_suffix('')}", str(p)], check=True, capture_output=True)
+
+
+def import_music(source, series):
+    """Files a soundtrack's tracks in MUSIC/series/<album>/, each album with its cover
+    when the release has one. Returns how many tracks came in."""
+    unpack_audio(source)
+    dest = MUSIC / safe_name(series)
+    tracks = [p for p in source.rglob("*") if p.suffix.lower() in brook.AUDIO]
+    for p in tracks:
+        album = safe_name(p.parent.name if p.parent != source else series)
+        folder = dest / album
+        folder.mkdir(parents=True, exist_ok=True)
+        art = next((a for a in sorted(p.parent.iterdir()) if a.suffix.lower() in brook.ART), None)
+        if art and not any((folder / f"cover{x}").exists() for x in brook.ART):
+            shutil.copy(art, folder / ("cover" + art.suffix.lower()))
+        shutil.move(str(p), free_name(folder, p.name))
+    set_music(series, state="ready" if tracks else "notfound")
+    return len(tracks)
+
+
+titles_cache = {}
+
+
+def title_of(path):
+    key = (str(path), path.stat().st_mtime)
+    if key not in titles_cache:
+        with path.open("rb") as f:
+            titles_cache[key] = brook.track_title(path, f.read(65536))
+    return titles_cache[key]
+
+
+def music_path(tid):
+    """The file of a track id, refusing anything outside the music folder."""
+    p = (MUSIC / tid).resolve()
+    if MUSIC.resolve() not in p.parents or not p.is_file():
+        raise KeyError(tid)
+    return p
+
+
+def albums(series):
+    """The albums of a series' music: [{name, art, tracks: [{id, title}]}]."""
+    root = MUSIC / safe_name(series)
+    if not root.exists():
+        return []
+    found = {}
+    for p in sorted(root.rglob("*"), key=lambda p: natural(str(p))):
+        if p.suffix.lower() in brook.AUDIO:
+            rel = p.relative_to(root).as_posix()
+            found.setdefault(brook.album_of(rel), []).append({"id": p.relative_to(MUSIC).as_posix(), "title": title_of(p)})
+    out = []
+    for name, tracks in found.items():
+        folder = root / name if name else root
+        art = next((a for a in folder.glob("cover.*") if a.suffix.lower() in brook.ART), None)
+        out.append({"name": name or series, "art": art.relative_to(MUSIC).as_posix() if art else None, "tracks": tracks})
+    return out
+
+
+def music_status(series):
+    status = dict(load_state()["music"].get(series, {"state": "none"}))
+    status.pop("at", None)
+    return status
+
+
+def music(series):
+    state = load_state()
+    found = albums(series)
+    status = music_status(series)
+    if found and status.get("state") in ("none", "notfound"):
+        status = {"state": "ready"}
+    moods = [{"name": k, "tracks": v} for k, v in sorted(state["moods"].get(series, {}).items())]
+    return {"status": status, "albums": found, "moods": moods}
+
+
+def set_mood(series, name, tracks):
+    """Creates, changes or (with no tracks) removes one of a series' own ambiences."""
+    name = (name or "").strip()[:60]
+    if not name:
+        raise KeyError("an ambience needs a name")
+
+    def change(state):
+        moods = state["moods"].setdefault(series, {})
+        if tracks:
+            moods[name] = [t for t in tracks if isinstance(t, str)]
+        else:
+            moods.pop(name, None)
+    update_state(change)
+    return music(series)
+
+
+def brook_pass():
+    """Brook looks for the music of one series that has none yet (or that he did not
+    find a week ago), if he is allowed to."""
+    if not settings()["brook"]:
+        return None
+    state = load_state()
+    for series in sorted(library_names(), key=natural):
+        status = state["music"].get(series)
+        due = not status or (status.get("state") == "notfound" and time.time() - status.get("at", 0) > MUSIC_RETRY)
+        if due and not albums(series):
+            set_music(series, state="searching")
+            try:
+                return grab_music(series)
+            except Exception as e:  # Prowlarr or Transmission away: try again next time
+                set_music(series, state="none")
+                print(f"brook {series}:", e, flush=True)
+                return None
+    return None
 
 
 # ---------- library ----------
@@ -747,7 +925,7 @@ def safe_torrents(hashes):
 
 
 def download_info(torrent_hash, d, t):
-    info = {"hash": torrent_hash, "series": d["series"], "title": d["title"], "range": d.get("range"), "pct": 0, "state": "unknown"}
+    info = {"hash": torrent_hash, "series": d["series"], "title": d["title"], "range": d.get("range"), "kind": d.get("kind", "volumes"), "pct": 0, "state": "unknown"}
     if t:
         info["pct"] = round(t["percentDone"] * 100)
         info["eta"] = t.get("eta", -1)
@@ -765,7 +943,7 @@ def refresh_meta():
     """Asks AniList about the series of the library it has not been asked about yet."""
     state = load_state()
     names = set(library_names()) | {d["series"] for d in state["downloads"].values()}
-    stale = lambda n: norm(n) not in state["lookups"] or (state["lookups"][norm(n)] and "banner" not in state["lookups"][norm(n)])
+    stale = lambda n: norm(n) not in state["lookups"] or not fresh(state["lookups"][norm(n)])
     missing = sorted(n for n in names if stale(n))
     found = lookups(missing)
 
@@ -963,6 +1141,56 @@ def post_settings(h):
     h.send(200, set_settings(h.body()))
 
 
+def send_file(h, path, ctype):
+    """A file, or the part of it a Range header asks for (audio needs it to seek)."""
+    size = path.stat().st_size
+    start, end = 0, size - 1
+    m = re.match(r"bytes=(\d*)-(\d*)", h.headers.get("Range") or "")
+    if m and (m.group(1) or m.group(2)):
+        start = int(m.group(1)) if m.group(1) else size - int(m.group(2))
+        end = min(int(m.group(2)), size - 1) if m.group(1) and m.group(2) else end
+    h.send_response(206 if m else 200)
+    h.send_header("Content-Type", ctype)
+    h.send_header("Accept-Ranges", "bytes")
+    h.send_header("Content-Length", str(end - start + 1))
+    if m:
+        h.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+    h.end_headers()
+    with path.open("rb") as f:
+        f.seek(start)
+        left = end - start + 1
+        while left > 0:
+            chunk = f.read(min(65536, left))
+            if not chunk:
+                break
+            h.wfile.write(chunk)
+            left -= len(chunk)
+
+
+def get_track(h):
+    path = music_path(h.query()["id"])
+    send_file(h, path, brook.AUDIO.get(path.suffix.lower(), "application/octet-stream"))
+
+
+def get_art(h):
+    path = music_path(h.query()["id"])
+    h.send(200, path.read_bytes(), TYPES.get(path.suffix.lower(), "image/jpeg"), {"Cache-Control": "max-age=86400"})
+
+
+def get_soundtracks(h):
+    h.send(200, [public(r) for r in find_soundtracks(h.query()["series"])])
+
+
+def post_music(h):
+    b = h.body()
+    h.send(200, grab_music(b["series"], b.get("token")))
+
+
+def post_mood(h):
+    b = h.body()
+    h.send(200, set_mood(b["series"], b.get("name"), b.get("tracks") or []))
+
+
 def post_cancel(h):
     cancel(h.body()["hash"])
     h.send(200, {"ok": True})
@@ -977,10 +1205,14 @@ GET_ROUTES = {
     "/api/cover": get_cover,
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,
+    "/api/music": lambda h: h.send(200, music(h.query()["series"])),
+    "/api/soundtracks": get_soundtracks,
+    "/api/track": get_track,
+    "/api/art": get_art,
     "/api/settings": lambda h: h.send(200, settings()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/cancel": post_cancel}
 
 
 def main():

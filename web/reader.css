@@ -44,3 +44,43 @@ body.bars #top, body.bars #bottom { transform: none; }
   #bottom { flex-wrap: wrap; justify-content: space-between; }
   #slider { flex-basis: 100%; }
 }
+
+/* ---------- the ambient music (player.js) ---------- */
+.music-pill { position: fixed; z-index: 4; left: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: min(70vw, 360px); display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px 7px 8px; border-radius: 999px; border: 1px solid #6b4528; background: rgba(42, 26, 14, .82); color: #f1e3c2; font: 13px system-ui, sans-serif; cursor: pointer; opacity: .55; transition: opacity .2s; }
+.music-pill:hover, .music-pill.on, body.bars .music-pill { opacity: 1; }
+.music-pill .state { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #f0b44c; color: #2a1d06; font-size: 12px; }
+.music-pill .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-pill.on .state { animation: beat 1.6s ease-in-out infinite; }
+@keyframes beat { 50% { transform: scale(1.12); } }
+
+.music-panel { position: fixed; z-index: 5; left: 12px; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 52px); width: min(420px, calc(100vw - 24px)); max-height: 72vh; overflow: auto;
+  padding: 14px 16px 16px; border-radius: 6px; color: #3b2615; background: #f1e3c2; box-shadow: 0 18px 40px rgba(0,0,0,.55);
+  background-image: radial-gradient(120% 80% at 0% 0%, rgba(160,110,60,.18), transparent 60%), radial-gradient(100% 70% at 100% 100%, rgba(140,90,40,.2), transparent 60%); }
+.music-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.music-panel h3 { margin: 0; font: 600 22px Georgia, serif; }
+.music-panel .btn { background: transparent; color: #3b2615; border-color: rgba(58,38,20,.3); }
+.music-panel .btn.main { background: #3b2615; color: #f1e3c2; border-color: #3b2615; }
+.music-panel .btn.off { opacity: .45; }
+.music-panel .close { padding: 4px 10px; }
+.music-panel .intro, .music-panel .brook p { margin: 0 0 12px; color: #7a5a3a; }
+.music-panel .now { display: grid; gap: 4px; padding: 10px 0 12px; border-bottom: 1px solid rgba(90,60,30,.18); margin-bottom: 10px; }
+.music-panel .now b { font: 600 18px Georgia, serif; }
+.music-panel .now small, .music-panel .time { color: #7a5a3a; font-size: 12px; }
+.music-panel .seek { width: 100%; accent-color: #9a6a2e; }
+.music-panel .controls { display: flex; align-items: center; gap: 8px; }
+.music-panel .volume { flex: 1; min-width: 60px; accent-color: #9a6a2e; }
+.music-panel .ambiences { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.music-panel .ambience { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; padding: 6px; border-radius: 6px; border: 1px solid rgba(58,38,20,.2); background: rgba(255,255,255,.25); text-align: left; cursor: pointer; color: inherit; }
+.music-panel .ambience.on { border-color: #9a6a2e; background: rgba(154,106,46,.15); }
+.music-panel .ambience .art { grid-row: span 2; width: 34px; height: 34px; border-radius: 4px; display: grid; place-items: center; background: #d8c49c center / cover; color: #7a5a3a; }
+.music-panel .ambience b { font: 600 14px/1.15 Georgia, serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-panel .ambience small { color: #7a5a3a; font-size: 11px; }
+.music-panel .tracks { list-style: none; margin: 0; padding: 0; counter-reset: t; }
+.music-panel .tracks li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; border-top: 1px solid rgba(90,60,30,.12); }
+.music-panel .tracks li.on .track { font-weight: 700; color: #8a4b12; }
+.music-panel .track { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px system-ui, sans-serif; }
+.music-panel .mini { padding: 2px 8px; border: 0; background: none; color: #7a5a3a; cursor: pointer; font-size: 16px; }
+.music-panel .mood-form { flex-basis: 100%; display: flex; gap: 6px; padding: 0 0 8px; }
+.music-panel .mood-form input { flex: 1; min-width: 0; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(58,38,20,.3); background: #fff8e8; }
+.music-panel .stop { margin-top: 12px; }

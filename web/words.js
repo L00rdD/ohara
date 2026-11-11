@@ -120,6 +120,12 @@ const Words = (() => {
     };
   }
 
+  // what a download is called in the lantern: tomes, or a series' music
+  function downloadName(d) {
+    if (d.kind === "ost") return W().musicDownload(d.series);
+    return d.range ? `${d.series}, ${tomes(d.range).toLowerCase()}` : d.series;
+  }
+
   // the bay of a series in the contents: the first one it stands on
   function contents(bays) {
     const seen = new Map();
@@ -198,7 +204,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

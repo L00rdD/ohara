@@ -199,6 +199,14 @@ button { font: inherit; color: inherit; }
 .tome small.new { color: var(--lantern); }
 .tome.gap .cv { background: none; border: 1px dashed rgba(244,232,204,.3); box-shadow: none; }
 
+/* a series' music on its sheet, and the soundtracks to pick from */
+.music-box { margin-top: 14px; }
+.picks { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.picks li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid rgba(244,232,204,.1); }
+.picks li div { display: grid; min-width: 0; }
+.picks li span { overflow-wrap: anywhere; }
+.picks li small { color: var(--muted); }
+
 /* settings: the styles of spines, each with a sample */
 .spine-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .spine-choice { --bw: 300px; display: grid; gap: 4px; justify-items: start; padding: 12px; border-radius: 10px; border: 1px solid rgba(244,232,204,.15); background: rgba(40,25,14,.5); text-align: left; cursor: pointer; }

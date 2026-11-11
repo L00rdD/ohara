@@ -231,3 +231,10 @@ test("everything a spine needs", () => {
   assert.equal(read.height, "86%");
   assert.equal(Ohara.spineDraw(vol({ number: null }), s, null, "#1").number, "");
 });
+
+test("what a download is called", () => {
+  assert.equal(fr(() => Ohara.downloadName({ kind: "ost", series: "Frieren" })), "Musique de Frieren");
+  assert.equal(en(() => Ohara.downloadName({ kind: "ost", series: "Frieren" })), "Music of Frieren");
+  assert.equal(fr(() => Ohara.downloadName({ kind: "volumes", series: "Naruto", range: [1, 72] })), "Naruto, tomes 1 à 72");
+  assert.equal(fr(() => Ohara.downloadName({ series: "Naruto", range: null })), "Naruto");
+});
