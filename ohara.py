@@ -750,7 +750,8 @@ def read_spines(limit=10):
 
 def settings():
     st = load_state()["settings"]
-    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", False)}
+    return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", False),
+            "ribbon": st.get("ribbon", True)}
 
 
 def settings_page():
@@ -762,7 +763,7 @@ def set_settings(changes):
     def change(state):
         if changes.get("spines") in SPINE_STYLES:
             state["settings"]["spines"] = changes["spines"]
-        for key in ("brook", "franky"):
+        for key in ("brook", "franky", "ribbon"):
             if isinstance(changes.get(key), bool):
                 state["settings"][key] = changes[key]
     update_state(change)

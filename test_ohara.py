@@ -805,9 +805,9 @@ class Http(Reading):
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
         lighter = {"done": 0, "total": 3, "saved": 0}
-        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": False, "lighter": lighter})
-        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False, "franky": False})[2]),
-                         {"spines": "sobre", "brook": False, "franky": False, "lighter": lighter})
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": False, "ribbon": True, "lighter": lighter})
+        self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False, "franky": False, "ribbon": False})[2]),
+                         {"spines": "sobre", "brook": False, "franky": False, "ribbon": False, "lighter": lighter})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
         ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
         with mock.patch.object(ohara, "warm") as warm:
@@ -1066,11 +1066,11 @@ class Robin(Library):
         self.assertEqual(ohara.load_state()["spines"], {})
 
     def test_spine_style_setting(self):
-        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": False})  # Franky waits to be asked
+        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": False, "ribbon": True})  # Franky waits to be asked
         self.assertEqual(ohara.set_settings({"spines": "reliure", "franky": True})["spines"], "reliure")
-        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
-        ohara.set_settings({"spines": "neon", "brook": "yes", "franky": "no"})
-        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True})
+        ohara.set_settings({"spines": "neon", "brook": "yes", "franky": "no", "ribbon": 0})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True})
 
 
 class Franky(Library):

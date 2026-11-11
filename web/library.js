@@ -100,6 +100,7 @@ const Ohara = (() => {
 
   // a spine in the style chosen in the settings (see ohara.css: .vol[data-style])
   let spineStyle = "tome";
+  let ribbon = true; // the bookmark ribbon on the lectern's book, unless taken off in the settings
   function spine(v, s, reading) {
     const d = spineDraw(v, s, reading, R.colour(s.name, s.meta.color));
     const b = selectable(el("button", d.cls), v.id, { vol: v }, s, () => (location.href = openUrl(v)));
@@ -241,6 +242,11 @@ const Ohara = (() => {
     return box.hidden ? 70 : box.offsetHeight + 36;
   }
 
+  function setRibbon(on) {
+    ribbon = on;
+    drawLectern();
+  }
+
   function putAway(v) {
     localStorage.setItem("ohara-lectern-away", v.id);
     drawLectern();
@@ -265,7 +271,7 @@ const Ohara = (() => {
       if (url) page.style.backgroundImage = `url("${url}")`;
       book.append(page);
     }
-    book.append(el("span", "mark"));
+    if (ribbon) book.append(el("span", "mark"));
     const shut = button("✕", "away", () => putAway(v));
     shut.title = shut.ariaLabel = W().lecternAway;
     box.replaceChildren(cap, book, shut, el("span", "desk"), el("span", "stand"));
@@ -419,13 +425,15 @@ const Ohara = (() => {
     $("open-search").onclick = Search.open;
     $("flag").onclick = () => setLanguage(I18n.get() === "fr" ? "en" : "fr");
     $("open-settings").onclick = Settings.open;
-    Settings.init({ spineStyle: () => spineStyle, setSpineStyle: (style) => ((spineStyle = style), drawRotunda()), setLanguage, closeSheet });
+    Settings.init({ spineStyle: () => spineStyle, setSpineStyle: (style) => ((spineStyle = style), drawRotunda()), setRibbon, setLanguage, closeSheet });
     Search.init({ series: () => lib.series, reload: load });
     Sheet.init({ reload: load, closeSheet });
     $("open-contents").onclick = openContents;
     api("/api/settings").then((st) => {
       spineStyle = st.spines;
+      ribbon = st.ribbon;
       drawRotunda();
+      drawLectern();
     }, () => {});
     $("lantern").onclick = () => {
       const open = $("downloads").hidden;

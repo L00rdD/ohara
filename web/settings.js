@@ -1,10 +1,11 @@
-// The settings: the interface's language, the style of spines, Brook, Franky, and where
+// The settings: the interface's language, the style of spines, the lectern's ribbon,
+// Brook, Franky, and where
 // to search (Prowlarr's indexers). library.js gives what they change on the page.
 const Settings = (() => {
   const { $, el, button, api } = UI;
   const W = () => I18n.words();
   const { indexerNotes, lighterText } = Words;
-  let ctx = { spineStyle: () => "tome", setSpineStyle: () => {}, setLanguage: () => {}, closeSheet: () => {} };
+  let ctx = { spineStyle: () => "tome", setSpineStyle: () => {}, setRibbon: () => {}, setLanguage: () => {}, closeSheet: () => {} };
 
   async function openSettings() {
     const sheet = $("settings");
@@ -19,6 +20,7 @@ const Settings = (() => {
     const list = el("div", "", "…");
     sheet.replaceChildren(button("✕", "round close", () => ctx.closeSheet(sheet)), el("h2", "", W().settings), el("h3", "", W().language), langs,
       el("h3", "", W().spinesTitle), el("p", "note", W().spinesHint), spineChoices(),
+      el("h3", "", W().lecternTitle), settingSwitch("ribbon", W().ribbonSetting, (st) => ctx.setRibbon(st.ribbon)),
       el("h3", "", W().music), el("p", "note", W().brookHint), brookSwitch(),
       el("h3", "", W().lighterTitle), el("p", "note", W().frankyHint), ...frankySwitch(),
       el("h3", "", W().indexers), el("p", "note", W().indexersHint), list);
