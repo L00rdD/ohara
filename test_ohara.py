@@ -1020,6 +1020,7 @@ class Brook(Library):
 
     def test_when_brook_looks_again(self):
         self.assertTrue(ohara.music_due(None, 0))
+        self.assertTrue(ohara.music_due({"state": "none", "at": 5}, 6))
         self.assertFalse(ohara.music_due({"state": "downloading", "at": 0}, 10 ** 9))
         self.assertFalse(ohara.music_due({"state": "error", "at": 1000}, 1000 + 1800))
         self.assertTrue(ohara.music_due({"state": "error", "at": 1000}, 1000 + 3601))

@@ -692,7 +692,7 @@ def music_due(status, now):
     """Whether Brook should look for a series' music now."""
     if not status:
         return True
-    wait = {"notfound": MUSIC_RETRY, "error": MUSIC_ERROR_RETRY}.get(status.get("state"))
+    wait = {"none": 0, "notfound": MUSIC_RETRY, "error": MUSIC_ERROR_RETRY}.get(status.get("state"))
     return wait is not None and now - status.get("at", 0) > wait
 
 
