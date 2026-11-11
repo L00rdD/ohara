@@ -14,6 +14,20 @@ const UI = (() => {
     b.onclick = onclick;
     return b;
   }
+  // a button that asks to be touched twice before it does something that cannot be undone
+  function twice(text, action, cls = "button") {
+    const b = button(text, cls, () => {
+      if (b.dataset.armed) return action();
+      b.dataset.armed = "1";
+      b.textContent = I18n.words().sure;
+      setTimeout(() => {
+        delete b.dataset.armed;
+        b.textContent = text;
+      }, 3000);
+    });
+    return b;
+  }
+
   function bar(pct) {
     const b = el("span", "bar");
     b.append(el("i"));
@@ -27,5 +41,5 @@ const UI = (() => {
     return data;
   }
 
-  return { $, el, button, bar, api };
+  return { $, el, button, twice, bar, api };
 })();

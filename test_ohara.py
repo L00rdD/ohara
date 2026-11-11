@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from unittest import mock
 _spec = importlib.util.spec_from_file_location("ohara", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ohara.py"))
 ohara = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ohara)
+sys.modules["ohara"] = ohara  # as it is when it runs: Chopper's remedies are given it
 
 
 def png(color=(200, 30, 30)):
@@ -728,7 +730,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}, "dismissed": {}})
 
 
 class Http(Reading):
@@ -1300,6 +1302,132 @@ class Chapters(Library):
         with mock.patch.object(ohara.chapters, "chapters", side_effect=OSError("away")):
             ohara.chapters_pass()  # said, and tried again next pass
         self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
+
+
+class Chopper(Library):
+    """What ails the library, and the remedies."""
+
+    def setUp(self):
+        super().setUp()
+        self.exams = mock.patch.object(ohara.chopper, "EXAMS", [])
+        self.cures = mock.patch.object(ohara.chopper, "CURES", {})
+        self.loaded = mock.patch.object(ohara.chopper, "_loaded", True)
+        music = mock.patch.object(ohara, "MUSIC", self.root / ".ost")
+        for p in (self.exams, self.cures, self.loaded, music):
+            p.start()
+            self.addCleanup(p.stop)
+        ohara.ailments_seen.update(at=0, list=[])
+
+    def test_examinations_their_ailments_and_remedies(self):
+        c = ohara.chopper
+        said = c.words("Deux fois", "Twice")
+        fixed = []
+
+        @c.exam
+        def twice(snap):
+            return [c.ailment("twice", "B", said, [c.remedy("fix", said, risky=True, what="b")], series="B", severity="advice"),
+                    c.ailment("twice", "A", said, [c.remedy("fix", said, what="a")], series="A"),
+                    c.ailment("twice", "A", said, [], series="A")]  # the same, said again
+
+        @c.exam
+        def broken(snap):
+            raise ValueError("an examination that fails")
+
+        @c.cure("fix")
+        def fix(o, what):
+            fixed.append((o, what))
+
+        found = c.examine({})
+        self.assertEqual([a["id"] for a in found], ["twice:A", "twice:B"])
+        self.assertEqual(found[1]["remedies"][0], {"kind": "fix", "label": said, "risky": True, "args": {"what": "b"}})
+        self.assertEqual(c.examine({}, {"twice:A"})[0]["id"], "twice:B")
+        self.assertEqual(c.apply(found, "twice:A", 0, "ohara"), {"ok": True})
+        self.assertEqual(fixed, [("ohara", "a")])
+        for aid, index in (("gone", 0), ("twice:A", 3), ("twice:A", -1)):
+            with self.assertRaises(KeyError):
+                c.apply(found, aid, index, "ohara")
+        with self.assertRaises(AssertionError):
+            c.ailment("x", "y", said, [], severity="dire")
+
+    def test_the_ailments_are_found_kept_treated_and_set_aside(self):
+        c = ohara.chopper
+        cbz(self.root / "Naruto" / "Naruto T01.cbz", ["1.png"])
+        (self.root / "Naruto" / "notes.txt").write_text("x")
+        (self.root / ".incoming" / "leftover").mkdir(parents=True)
+        seen = []
+        treated = []
+
+        @c.exam
+        def look(snap):
+            seen.append(snap)
+            return [c.ailment("look", "N", c.words("a", "a"), [c.remedy("treat", c.words("b", "b"))], series="Naruto")]
+
+        @c.cure("treat")
+        def treat(o):
+            treated.append(o)
+            return {"said": "done"}
+
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            self.assertEqual(len(ohara.ailments()), 1)
+            ohara.ailments()  # kept a minute
+            self.assertEqual(len(seen), 1)
+            snap = seen[0]
+            self.assertEqual([f["name"] for f in snap["files"]["Naruto"]], ["Naruto T01.cbz", "notes.txt"])
+            self.assertEqual(snap["files"]["Naruto"][1]["size"], 1)
+            self.assertEqual(snap["incoming"], ["leftover"])
+            self.assertEqual(snap["series"][0]["name"], "Naruto")
+            done = ohara.treat("look:N", 0)
+            self.assertEqual(done["done"], {"said": "done"})
+            self.assertIs(treated[0], ohara)
+            self.assertEqual(ohara.dismiss("look:N"), [])
+            self.assertIn("look:N", ohara.load_state()["dismissed"])
+            self.assertEqual(len(ohara.dismiss("look:N", on=False)), 1)
+            code, _, payload = Http.call(self, "GET", "/api/ailments?fresh=1")
+            self.assertEqual((code, json.loads(payload)[0]["id"]), (200, "look:N"))
+            self.assertEqual(Http.call(self, "POST", "/api/ailments/treat", {"id": "look:N", "remedy": 0})[0], 200)
+            self.assertEqual(Http.call(self, "POST", "/api/ailments/treat", {"id": "gone"})[0], 404)
+            self.assertEqual(Http.call(self, "POST", "/api/ailments/dismiss", {"id": "look:N"})[0], 200)
+
+    def test_renaming_a_volume_keeps_where_you_are(self):
+        cbz(self.root / "Potter" / "Rowling [Tome 1].epub", ["1.png"])
+        cbz(self.root / "Potter" / "Potter T01.epub", ["1.png"])  # the name is taken: another is found
+        ohara.save_state({"progress": {"Potter/Rowling [Tome 1].epub": {"page": 3, "pages": 9, "at": 5}}, "spines": {"Potter/Rowling [Tome 1].epub": {"c": 1}},
+                          "series": {"Potter": {"decor": "vol:Potter/Rowling [Tome 1].epub"}}})
+        new = ohara.rename_volume("Potter/Rowling [Tome 1].epub", "Potter T01.epub")
+        self.assertEqual(new, "Potter/Potter T01 (2).epub")
+        state = ohara.load_state()
+        self.assertEqual(state["progress"], {new: {"page": 3, "pages": 9, "at": 5}})
+        self.assertEqual(list(state["spines"]), [new])
+        self.assertEqual(state["series"]["Potter"]["decor"], "vol:" + new)
+        ohara.delete_volume(new)
+        self.assertFalse((self.root / new).exists())
+        self.assertEqual(ohara.load_state()["progress"], {})
+
+    def test_renaming_a_series_takes_everything_with_it(self):
+        old = "Christopher Paolini Eragon"
+        cbz(self.root / old / "Eragon T01.cbz", ["1.png"])
+        cbz(self.root / "Naruto" / "Naruto T01.cbz", ["1.png"])
+        (ohara.MUSIC / old / "Album").mkdir(parents=True)
+        ohara.decor_file(old).parent.mkdir(parents=True, exist_ok=True)
+        ohara.decor_file(old).write_bytes(b"jpg")
+        vid = old + "/Eragon T01.cbz"
+        ohara.save_state({"progress": {vid: {"page": 1}, "Naruto/Naruto T01.cbz": {"page": 2}}, "franky": {vid: [2, 1]},
+                          "series": {old: {"follow": True, "decor": "vol:" + vid}}, "music": {old: {"state": "ready"}}, "chapters": {old: {"at": 1}},
+                          "lookups": {ohara.norm(old): {"id": 9}}, "downloads": {"H": {"series": old}}})
+        self.assertEqual(ohara.rename_series(old, "Eragon"), "Eragon")
+        self.assertTrue((self.root / "Eragon" / "Eragon T01.cbz").exists())
+        self.assertTrue((ohara.MUSIC / "Eragon" / "Album").exists())
+        self.assertEqual(ohara.decor_file("Eragon").read_bytes(), b"jpg")
+        state = ohara.load_state()
+        self.assertEqual(state["progress"], {"Eragon/Eragon T01.cbz": {"page": 1}, "Naruto/Naruto T01.cbz": {"page": 2}})
+        self.assertEqual(state["franky"], {"Eragon/Eragon T01.cbz": [2, 1]})
+        self.assertEqual(state["series"], {"Eragon": {"follow": True, "decor": "vol:Eragon/Eragon T01.cbz"}})
+        self.assertEqual((list(state["music"]), list(state["chapters"])), (["Eragon"], ["Eragon"]))
+        self.assertEqual(state["lookups"]["eragon"], {"id": 9})
+        self.assertEqual(state["downloads"]["H"]["series"], "Eragon")
+        for taken in ("Naruto", "", "Eragon"):
+            with self.assertRaises(KeyError):
+                ohara.rename_series("Eragon" if taken != "Eragon" else "Nobody", taken)
 
 
 def mp3(title):

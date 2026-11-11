@@ -52,6 +52,10 @@ button { font: inherit; color: inherit; }
 .lantern .glow { position: absolute; inset: -12px; border-radius: 50%; background: radial-gradient(closest-side, rgba(246,185,90,.5), transparent); animation: breathe 2.8s ease-in-out infinite; pointer-events: none; }
 .lantern .count { position: absolute; right: -3px; bottom: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--lantern); color: var(--on-lantern); font: 800 11px/18px var(--body); }
 .lantern.off .glow, .lantern.off .count { display: none; }
+.doctor { font-size: 17px; }
+.doctor .count { position: absolute; right: -3px; bottom: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #e07a5f; color: #fff; font: 800 11px/18px var(--body); }
+.doctor.quiet { opacity: .55; }
+.doctor.quiet .count { display: none; }
 @keyframes breathe { 50% { transform: scale(1.12); opacity: .8; } }
 
 /* ---------- parchments: the lantern's list ---------- */
@@ -97,6 +101,7 @@ button { font: inherit; color: inherit; }
 .plaque.blank { visibility: hidden; }
 /* a bay shared by small series: a small plaque over each one's shelf */
 .bay-in.shared .vol { height: 70%; }
+.bay-in.shared .ledge.decor { background: linear-gradient(180deg, rgba(26,15,7,.55), rgba(26,15,7,.8)), var(--banner) center / cover no-repeat; }
 .shelf-plaque { position: absolute; z-index: 1; top: 6px; left: 50%; transform: translateX(-50%); max-width: 88%; padding: 3px 12px 4px; border: 0; border-radius: 3px; cursor: pointer;
   background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 30%, #6e4627), color-mix(in srgb, var(--tint) 22%, #4e311b)); box-shadow: inset 0 1px 0 rgba(255,220,170,.25), 0 2px 5px rgba(0,0,0,.4);
   font: 600 calc(var(--s) * 15px)/1 var(--display); color: #f2dcb0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -260,6 +265,17 @@ button { font: inherit; color: inherit; }
 /* a volume read: a gilt tick on its spine */
 .vol.done:not(.face) .vn::after { content: "✓"; display: block; margin-top: 3px; color: #e8c77a; font-size: 10px; }
 
+/* what ails the library, and the remedies */
+.ailments-of { margin-top: 18px; }
+.ailment { margin: 10px 0; padding: 12px 14px; border-radius: 8px; background: rgba(244,232,204,.05); border-left: 3px solid #e07a5f; }
+.ailment.advice { border-left-color: var(--leaf); }
+.ailment p { margin: 0 0 10px; }
+.ailment .actions { gap: 8px; }
+.ailment .button { padding: 7px 13px; font-size: 14px; }
+.ailment .button.quiet { background: none; border-color: transparent; color: var(--muted); }
+.ailment.busy { opacity: .5; pointer-events: none; }
+.ailments-here:empty { display: none; }
+.ailments-here { margin: 4px 0 14px; max-width: 620px; }
 /* settings */
 /* a part of the settings folded away: its title opens it */
 .fold { margin-top: 22px; }

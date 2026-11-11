@@ -3,7 +3,7 @@
 // can be done with its reading (mark read, read up to here, back to unread), and the
 // back of its shelves.
 const Sheet = (() => {
-  const { $, el, button, bar, api } = UI;
+  const { $, el, button, twice, bar, api } = UI;
   const W = () => I18n.words();
   const { tomes, describe, readingState, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, coverUrl, volumeName, tileLook, readCounts, upTo, decorUrl, decorChoices, decorName } = Words;
   let ctx = { reload: () => {}, closeSheet: () => {} };
@@ -112,20 +112,6 @@ const Sheet = (() => {
   async function mark(vols, read) {
     await api("/api/read", { vols, read });
     load();
-  }
-
-  // a button that asks to be touched twice before it does something that cannot be undone
-  function twice(text, action) {
-    const b = button(text, "button", () => {
-      if (b.dataset.armed) return action();
-      b.dataset.armed = "1";
-      b.textContent = W().sure;
-      setTimeout(() => {
-        delete b.dataset.armed;
-        b.textContent = text;
-      }, 3000);
-    });
-    return b;
   }
 
   function progress(s) {
@@ -250,7 +236,7 @@ const Sheet = (() => {
     acts.append(read, followSwitch(s));
     const facts = el("p", "facts");
     facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
-    text.append(el("h2", "", s.name), facts, acts, progress(s), gaps(s), musicBox(s), decorBox(s));
+    text.append(el("h2", "", s.name), facts, Doctor.forSeries(s.name), acts, progress(s), gaps(s), musicBox(s), decorBox(s));
     head.append(img, text);
     const grid = el("div", "tomes");
     grid.append(...s.volumes.map((x) => tomeWithMenu(x, s)));

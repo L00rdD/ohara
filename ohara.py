@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import brook  # noqa: E402
 import chapters  # noqa: E402
+import chopper  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
@@ -69,7 +70,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters"):
+    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters", "dismissed"):
         state.setdefault(key, {})
     return state
 
@@ -1196,6 +1197,116 @@ def last_read(series):
     return max(vols, key=lambda v: v["at"]) if vols else None
 
 
+# ---------- Chopper: what ails the library, and the remedies (see chopper.py) ----------
+
+def snapshot():
+    """What Chopper's examinations look at: the library as the page sees it, the state,
+    every file of each series' folder ({name, size, mtime}, those Ohara does not read
+    too), and what is left in .incoming."""
+    state = load_state()
+    lib = library()
+    files = {}
+    for name in library_names():
+        found = sorted((p for p in (MANGA / name).iterdir() if p.is_file()), key=lambda p: natural(p.name))
+        files[name] = [{"name": p.name, "size": p.stat().st_size, "mtime": p.stat().st_mtime} for p in found]
+    incoming = sorted(p.name for p in INCOMING.iterdir()) if INCOMING.exists() else []
+    return {"series": lib["series"], "downloads": lib["downloads"], "state": state, "files": files, "incoming": incoming, "now": time.time()}
+
+
+ailments_seen = {"at": 0, "list": []}
+AILMENTS_FRESH = 60  # seconds an examination is kept before being made again
+
+
+def ailments(fresh=False):
+    if fresh or time.time() - ailments_seen["at"] > AILMENTS_FRESH:
+        ailments_seen["list"] = chopper.examine(snapshot(), set(load_state()["dismissed"]))
+        ailments_seen["at"] = time.time()
+    return ailments_seen["list"]
+
+
+def treat(aid, index):
+    """Runs a remedy chosen, then examines the library again."""
+    done = chopper.apply(ailments(fresh=True), aid, index, sys.modules[__name__])
+    return {"done": done, "ailments": ailments(fresh=True)}
+
+
+def dismiss(aid, on=True):
+    """Sets an ailment aside (it is not said again), or takes it back."""
+    def change(state):
+        state["dismissed"] = {**state["dismissed"], aid: time.time()} if on else {k: v for k, v in state["dismissed"].items() if k != aid}
+    update_state(change)
+    return ailments(fresh=True)
+
+
+def move_keys(table, rename):
+    """A state table (a dict) with its keys renamed by rename(key) -> new key or None."""
+    return {rename(k) or k: v for k, v in table.items()}
+
+
+def rename_volume(vid, name):
+    """Renames a volume's file in its folder, keeping where you are in it, its spine,
+    what Franky noted and a decor made of its cover. Returns the new id."""
+    path = volume_path(vid)
+    target = free_name(path.parent, safe_name(name))
+    path.rename(target)
+    new = volume_id(target)
+    moved = lambda k: new if k == vid else None
+
+    def change(state):
+        for key in ("progress", "spines", "franky"):
+            state[key] = move_keys(state[key], moved)
+        for entry in state["series"].values():
+            if entry.get("decor") == "vol:" + vid:
+                entry["decor"] = "vol:" + new
+    update_state(change)
+    return new
+
+
+def rename_series(old, new):
+    """Renames a series: its folder, its music, its own decor image, and everything the
+    state keeps of it and of its volumes. KeyError when the name is taken."""
+    if not new.strip():
+        raise KeyError(new)
+    new = safe_name(new)
+    src, dst = MANGA / old, MANGA / new
+    if not src.is_dir() or dst.exists():
+        raise KeyError(new)
+    src.rename(dst)
+    if (MUSIC / safe_name(old)).exists() and not (MUSIC / new).exists():
+        (MUSIC / safe_name(old)).rename(MUSIC / new)
+    if decor_file(old).exists():
+        decor_file(old).replace(decor_file(new))
+    prefix = old + "/"
+    moved_vol = lambda k: new + "/" + k[len(prefix):] if k.startswith(prefix) else None
+    moved_name = lambda k: new if k == old else None
+
+    def change(state):
+        for key in ("progress", "spines", "franky"):
+            state[key] = move_keys(state[key], moved_vol)
+        for key in ("series", "music", "moods", "chapters"):
+            state[key] = move_keys(state[key], moved_name)
+        if norm(old) in state["lookups"] and norm(new) not in state["lookups"]:
+            state["lookups"][norm(new)] = state["lookups"][norm(old)]
+        entry = state["series"].get(new, {})
+        if entry.get("decor", "").startswith("vol:" + prefix):
+            entry["decor"] = "vol:" + new + "/" + entry["decor"][len("vol:" + prefix):]
+        for d in state["downloads"].values():
+            if d.get("series") == old:
+                d["series"] = new
+    update_state(change)
+    return new
+
+
+def delete_volume(vid):
+    """Deletes a volume's file, and what the state kept of it."""
+    volume_path(vid).unlink()
+
+    def change(state):
+        for key in ("progress", "spines", "franky"):
+            state[key].pop(vid, None)
+    update_state(change)
+
+
 def refresh_meta():
     """Asks AniList about the series of the library it has not been asked about yet."""
     state = load_state()
@@ -1546,6 +1657,16 @@ def get_decor(h):
     h.send(200, f.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=31536000"})
 
 
+def post_treat(h):
+    b = h.body()
+    h.send(200, treat(str(b["id"]), int(b.get("remedy", 0))))
+
+
+def post_dismiss(h):
+    b = h.body()
+    h.send(200, dismiss(str(b["id"]), bool(b.get("on", True))))
+
+
 def post_progress(h):
     b = h.body()
     save_progress(b["vol"], b["page"], b["count"])
@@ -1642,6 +1763,7 @@ GET_ROUTES = {
     "/api/file": get_file,
     "/api/cover": get_cover,
     "/api/decor": get_decor,
+    "/api/ailments": lambda h: h.send(200, ailments(fresh=h.query().get("fresh") == "1")),
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,
     "/api/music": lambda h: h.send(200, music(h.query()["series"])),
@@ -1651,7 +1773,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel}
 
 
 def main():

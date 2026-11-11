@@ -23,6 +23,7 @@ const Ohara = (() => {
     $("open-settings").title = W().settings;
     $("open-contents").title = W().contentsHint;
     $("lectern-back").title = $("lectern-back").ariaLabel = W().lecternBack;
+    $("open-ailments").title = W().ailmentsTitle;
     $("turn-left").title = W().turnLeft;
     $("turn-right").title = W().turnRight;
     $("search-form").q.placeholder = W().search;
@@ -165,7 +166,8 @@ const Ohara = (() => {
     inner.onclick = () => openSeries(b.series, i);
   }
 
-  // a bay shared by small series: each on its own shelf, its name on a small plaque
+  // a bay shared by small series: each on its own shelf, its name on a small plaque,
+  // its decor behind it
   function sharedBay(b, i, inner) {
     inner.classList.add("shared");
     inner.append(el("span", "plaque blank", "·"));
@@ -177,6 +179,11 @@ const Ohara = (() => {
         const label = button(text.title, "shelf-plaque", () => openSeries(s, i));
         label.style.setProperty("--tint", R.colour(s.name, s.meta.color));
         label.append(el("small", "", text.sub));
+        const back = decorUrl(s);
+        if (back) {
+          ledge.classList.add("decor");
+          ledge.style.setProperty("--banner", `url("${back}")`);
+        }
         ledge.append(label, ...row.map((p) => (p.vol ? spine(p.vol, s, readingId()) : hole(p, s, i))));
         ledge.onclick = () => openSeries(s, i);
       }
@@ -290,7 +297,7 @@ const Ohara = (() => {
   // buttons open their own things
   function closeOutside(e) {
     if (e.target.closest(".top, #selection, .sheet")) return;
-    for (const id of ["series", "settings"]) if (!$(id).hidden) closeSheet($(id));
+    for (const id of ["series", "settings", "ailments"]) if (!$(id).hidden) closeSheet($(id));
   }
 
   function drawInvitation(box) {
@@ -435,6 +442,7 @@ const Ohara = (() => {
     }
     draw();
     Sheet.refresh(lib.series);
+    Doctor.refresh();
     clearTimeout(timer);
     timer = setTimeout(load, lib.downloads.length ? 5000 : 60000);
   }
@@ -455,7 +463,7 @@ const Ohara = (() => {
   }
 
   function closeAll() {
-    for (const id of ["series", "settings", "search", "downloads", "contents"]) $(id).hidden = true;
+    for (const id of ["series", "settings", "ailments", "search", "downloads", "contents"]) $(id).hidden = true;
     $("lantern").setAttribute("aria-expanded", "false");
   }
 
@@ -466,6 +474,8 @@ const Ohara = (() => {
     $("flag").onclick = () => setLanguage(I18n.get() === "fr" ? "en" : "fr");
     $("open-settings").onclick = () => ($("settings").hidden ? Settings.open() : closeSheet($("settings")));
     $("lectern-back").onclick = bringBack;
+    $("open-ailments").onclick = () => ($("ailments").hidden ? Doctor.open() : closeSheet($("ailments")));
+    Doctor.init({ reload: load, closeSheet });
     addEventListener("pointerdown", closeOutside);
     Settings.init({ spineStyle: () => spineStyle, setSpineStyle: (style) => ((spineStyle = style), drawRotunda()), setRibbon, setLanguage, closeSheet });
     Search.init({ series: () => lib.series, reload: load });
