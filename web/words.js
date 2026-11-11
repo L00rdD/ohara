@@ -201,14 +201,15 @@ const Words = (() => {
   // banner by default; null for bare wood
   function decorUrl(s, decor = s.decor || "banner") {
     if (decor.startsWith("vol:")) return coverUrl(decor.slice(4));
+    if (decor.startsWith("own:")) return `/api/decor?series=${encodeURIComponent(s.name)}&v=${decor.slice(4)}`;
     if (decor.startsWith("url:")) return decor.slice(4);
     return { banner: s.meta.banner, cover: s.meta.cover }[decor] || null;
   }
 
   // the decors a series' sheet offers: its banner and cover when AniList has them, bare
-  // wood, and the volume or the link chosen
+  // wood, its own image kept on the server, and the volume chosen
   function decorChoices(s) {
-    const all = ["banner", "cover"].filter((d) => decorUrl(s, d)).concat("none");
+    const all = ["banner", "cover"].filter((d) => decorUrl(s, d)).concat("none", s.kept ? [`own:${s.kept}`] : []);
     return s.decor && !all.includes(s.decor) ? all.concat(s.decor) : all;
   }
 

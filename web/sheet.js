@@ -156,11 +156,35 @@ const Sheet = (() => {
     return b;
   }
 
-  // the decors to pick from, and a link to an image of one's own
-  function decorBox(s) {
-    const box = el("div", "decor-box");
-    const picks = el("div", "decor-picks");
-    picks.append(...decorChoices(s).map((d) => decorSwatch(s, d)));
+  // while the server fetches or receives an image: what it is doing, then its error if any
+  async function keeping(said, work) {
+    said.className = "note";
+    said.textContent = W().decorKeeping;
+    try {
+      await work();
+      load();
+    } catch (err) {
+      said.className = "error";
+      said.textContent = W().decorErrors[err.message] || err.message;
+    }
+  }
+
+  // an image of one's own, sent from the phone or the computer
+  function decorUpload(s, said) {
+    const file = el("input");
+    file.type = "file";
+    file.accept = "image/*";
+    file.hidden = true;
+    file.onchange = () => file.files[0] && keeping(said, async () => {
+      const r = await fetch("/api/decor/image?series=" + encodeURIComponent(s.name), { method: "POST", body: file.files[0] });
+      if (!r.ok) throw new Error((await r.json()).error);
+    });
+    const send = button(W().decorUpload, "button", () => file.click());
+    return [send, file];
+  }
+
+  // an image from the web, fetched and kept by the server
+  function decorLink(s, said) {
     const link = el("form", "decor-link");
     const input = el("input");
     input.type = "url";
@@ -169,17 +193,30 @@ const Sheet = (() => {
     const ok = button(W().ok, "button", null);
     ok.type = "submit";
     link.append(input, ok);
+    link.hidden = true;
     link.onsubmit = (e) => {
       e.preventDefault();
-      setDecor(s, "url:" + input.value.trim()).catch((err) => link.append(el("p", "error", err.message)));
+      keeping(said, () => api("/api/decor", { series: s.name, decor: "url:" + input.value.trim() }));
     };
-    link.hidden = true;
-    const more = button(W().decorLink, "button", () => {
-      more.hidden = true;
+    const open = button(W().decorLink, "button", () => {
+      open.hidden = true;
       link.hidden = false;
       input.focus();
     });
-    box.append(el("h3", "", W().decorTitle), picks, more, link, el("p", "note", W().decorVolHint));
+    return [open, link];
+  }
+
+  // the decors to pick from, and an image of one's own, sent or from the web
+  function decorBox(s) {
+    const box = el("div", "decor-box");
+    const picks = el("div", "decor-picks");
+    picks.append(...decorChoices(s).map((d) => decorSwatch(s, d)));
+    const said = el("p", "note");
+    const [send, file] = decorUpload(s, said);
+    const [open, link] = decorLink(s, said);
+    const acts = el("div", "actions");
+    acts.append(send, open);
+    box.append(el("h3", "", W().decorTitle), picks, acts, file, link, said, el("p", "note", W().decorVolHint));
     return box;
   }
 

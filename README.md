@@ -45,8 +45,9 @@ Tree of Knowledge.
   shelves, touching a volume pins a card under the lectern: read it, mark it read (or
   back to unread), or open its series' sheet; touching it again opens it.
 - **The back of the shelves.** A series' bays wear its AniList banner by default; its
-  sheet lets you put its AniList cover there instead, bare wood, an image from the web,
-  or a volume's cover (from that volume's ⋯ menu).
+  sheet lets you put its AniList cover there instead, bare wood, a volume's cover (from
+  that volume's ⋯ menu), or an image of its own: sent from the phone or the computer,
+  or fetched from a link. Ohara keeps that image itself, in `.ohara/decors`.
 - **The lectern.** The volume you are reading (or the next one, once it is finished) lies open in the middle of the rotunda,
   at your page, a ribbon in it: touch it to carry on. Other volumes you started keep
   a ribbon hanging from their spine. The rotunda opens facing the series being read.

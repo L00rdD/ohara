@@ -556,14 +556,38 @@ class Reading(Library):
 
     def test_the_back_of_a_series_bays(self):
         with mock.patch.object(ohara, "safe_torrents", return_value=[]):
-            self.assertEqual(ohara.library()["series"][0]["decor"], "banner")
-        for decor in ("cover", "none", "vol:Naruto/Naruto T02.cbz", "url:https://example.org/wall.jpg", "banner"):
+            naruto = ohara.library()["series"][0]
+        self.assertEqual((naruto["decor"], naruto["kept"]), ("banner", None))
+        for decor in ("cover", "none", "vol:Naruto/Naruto T02.cbz", "banner"):
             ohara.set_decor("Naruto", decor)
             self.assertEqual(ohara.load_state()["series"]["Naruto"]["decor"], decor)
-        for wrong in ("vol:Naruto/nope.cbz", "vol:../x", "vol:Other/Naruto T02.cbz", "url:javascript:x", "url:https://a b", "gold"):
+        for wrong in ("vol:Naruto/nope.cbz", "vol:../x", "vol:Other/Naruto T02.cbz", "own:1", "url:javascript:x", "url:https://a b", "gold"):
             with self.assertRaises(KeyError):
                 ohara.set_decor("Naruto", wrong)
         self.assertEqual(ohara.load_state()["series"]["Naruto"]["decor"], "banner")
+
+    def test_an_image_of_its_own_on_the_back_of_the_bays(self):
+        from PIL import Image
+        png = io.BytesIO()
+        Image.new("RGB", (3000, 1000), "red").save(png, "PNG")
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = png.getvalue()
+        with mock.patch.object(ohara.urllib.request, "urlopen", return_value=answer) as get:
+            done = ohara.set_decor("Naruto", "url:https://example.org/wall.png")
+        self.assertEqual(get.call_args[0][0].full_url, "https://example.org/wall.png")
+        kept = ohara.decor_kept("Naruto")
+        self.assertEqual(done["decor"], f"own:{kept}")
+        self.assertEqual(Image.open(ohara.decor_file("Naruto")).size, (1600, 533))
+        ohara.set_decor("Naruto", "none")
+        ohara.set_decor("Naruto", done["decor"])
+        self.assertEqual(ohara.load_state()["series"]["Naruto"]["decor"], done["decor"])
+        with self.assertRaises(ValueError):
+            ohara.keep_decor("Naruto", b"not an image")
+        with self.assertRaises(KeyError):
+            ohara.keep_decor("Nobody", png.getvalue())
+        answer.__enter__.return_value.read.return_value = b"x" * (ohara.DECOR_MAX + 1)
+        with mock.patch.object(ohara.urllib.request, "urlopen", return_value=answer), self.assertRaises(ValueError):
+            ohara.fetch_decor("Naruto", "https://example.org/huge.png")
 
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
@@ -592,7 +616,7 @@ class Http(Reading):
     def call(self, method, path, body=None):
         h = ohara.Handler.__new__(ohara.Handler)
         h.path, h.command, h.request_version, h.requestline = path, method, "HTTP/1.1", ""
-        raw = json.dumps(body).encode() if body is not None else b""
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else b""
         h.headers = {"Content-Length": str(len(raw))}
         h.rfile, h.wfile = io.BytesIO(raw), io.BytesIO()
         h.client_address = ("10.0.0.2", 5000)
@@ -678,6 +702,17 @@ class Http(Reading):
         with mock.patch.object(ohara, "set_decor", return_value={"ok": True}) as decor:
             self.assertEqual(self.call("POST", "/api/decor", {"series": "Naruto", "decor": "none"})[0], 200)
         decor.assert_called_once_with("Naruto", "none")
+        with mock.patch.object(ohara, "keep_decor", return_value={"ok": True}) as keep:
+            self.assertEqual(self.call("POST", "/api/decor/image?series=Naruto", b"IMG")[0], 200)
+        keep.assert_called_once_with("Naruto", b"IMG")
+        with mock.patch.object(ohara, "DECOR_MAX", 2):
+            self.assertEqual(self.call("POST", "/api/decor/image?series=Naruto", b"IMG")[0], 502)
+        self.assertEqual(self.call("GET", "/api/decor?series=Naruto")[0], 404)
+        ohara.decor_file("Naruto").parent.mkdir(parents=True, exist_ok=True)
+        ohara.decor_file("Naruto").write_bytes(b"JPG")
+        code, head, payload = self.call("GET", "/api/decor?series=Naruto")
+        self.assertEqual((code, payload), (200, b"JPG"))
+        self.assertIn("image/jpeg", head)
         with mock.patch.object(ohara, "cancel") as cancel:
             self.assertEqual(self.call("POST", "/api/cancel", {"hash": "H"})[0], 200)
         cancel.assert_called_once_with("H")

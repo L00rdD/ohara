@@ -242,7 +242,8 @@ button { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1px rgba(244,232,204,.12), 0 6px 14px rgba(0,0,0,.4); }
 .decor-pick[aria-pressed="true"] { color: var(--text); }
 .decor-pick[aria-pressed="true"] .swatch { border-color: var(--lantern); }
-.decor-link { display: flex; gap: 10px; max-width: 520px; }
+.decor-link { display: flex; gap: 10px; max-width: 520px; margin-top: 12px; }
+.decor-box .actions .button { padding: 8px 14px; font-size: 14px; }
 .decor-link input { flex: 1; min-width: 0; padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(244,232,204,.2); background: rgba(20,12,6,.6); color: var(--text); font: inherit; }
 /* a volume read: a gilt tick on its spine */
 .vol.done:not(.face) .vn::after { content: "✓"; display: block; margin-top: 3px; color: #e8c77a; font-size: 10px; }

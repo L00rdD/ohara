@@ -913,24 +913,72 @@ def volumes(series_dir):
 
 
 DECORS = ("banner", "cover", "none")
+DECOR_MAX = 25 * 1024 * 1024  # bytes of an image sent or fetched for a decor
+
+
+def decor_file(series):
+    return STATE_DIR / "decors" / (hashlib.sha1(series.encode()).hexdigest() + ".jpg")
+
+
+def decor_kept(series):
+    """When the series' own image was kept (to tell its versions apart), or None."""
+    f = decor_file(series)
+    return int(f.stat().st_mtime) if f.exists() else None
 
 
 def decor_ok(series, decor):
     if decor.startswith("vol:"):
         return decor[4:].startswith(series + "/") and volume_path(decor[4:]).is_file()
-    return decor in DECORS or bool(re.match(r"url:https?://\S+$", decor))
+    if decor.startswith("own:"):
+        return decor_kept(series) is not None
+    return decor in DECORS
+
+
+def choose_decor(series, decor):
+    def change(state):
+        series_entry(state, series)["decor"] = decor
+    update_state(change)
+    return {"ok": True, "decor": decor}
 
 
 def set_decor(series, decor):
     """The back of a series' bays: its AniList banner (the default), its AniList cover,
-    a volume's cover ("vol:<id>"), an image from the web ("url:<address>") or bare wood."""
+    a volume's cover ("vol:<id>"), its own image ("own:<when>") or bare wood. An image
+    from the web ("url:<address>") is fetched and kept as its own image."""
+    if decor.startswith("url:"):
+        return fetch_decor(series, decor[4:])
     if not decor_ok(series, decor):
         raise KeyError(decor)
+    return choose_decor(series, decor)
 
-    def change(state):
-        series_entry(state, series)["decor"] = decor
-    update_state(change)
-    return {"ok": True}
+
+def keep_decor(series, data):
+    """An image of a series' own for the back of its bays, sent or fetched from the web:
+    kept in .ohara/decors as a JPEG of at most 1600 px, and chosen."""
+    from PIL import Image, ImageOps
+    if series not in library_names():
+        raise KeyError(series)
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except Exception:
+        raise ValueError("not an image") from None
+    img.thumbnail((1600, 1600))
+    out = decor_file(series)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out, "JPEG", quality=85)
+    return choose_decor(series, f"own:{decor_kept(series)}")
+
+
+def fetch_decor(series, url):
+    if not re.match(r"https?://\S+$", url):
+        raise KeyError(url)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Ohara)"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = r.read(DECOR_MAX + 1)
+    if len(data) > DECOR_MAX:
+        raise ValueError("image too big")
+    return keep_decor(series, data)
 
 
 def library_names():
@@ -953,6 +1001,7 @@ def series_info(d, state):
         "new": sum(v["new"] for v in vols),
         "follow": entry.get("follow", False),
         "decor": entry.get("decor", "banner"),
+        "kept": decor_kept(d.name),
         "meta": meta,
         "missing": [n for n in range(1, last + 1) if n not in numbers and n not in coming],
         "coming": sorted(coming),
@@ -1211,6 +1260,20 @@ def post_decor(h):
     h.send(200, set_decor(b["series"], str(b.get("decor", ""))))
 
 
+def post_decor_image(h):
+    n = int(h.headers.get("Content-Length") or 0)
+    if n > DECOR_MAX:
+        raise ValueError("image too big")
+    h.send(200, keep_decor(h.query()["series"], h.rfile.read(n)))
+
+
+def get_decor(h):
+    f = decor_file(h.query()["series"])
+    if not f.exists():
+        raise KeyError("decor")
+    h.send(200, f.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=31536000"})
+
+
 def post_progress(h):
     b = h.body()
     save_progress(b["vol"], b["page"], b["count"])
@@ -1306,6 +1369,7 @@ GET_ROUTES = {
     "/api/page": get_page,
     "/api/file": get_file,
     "/api/cover": get_cover,
+    "/api/decor": get_decor,
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,
     "/api/music": lambda h: h.send(200, music(h.query()["series"])),
@@ -1315,7 +1379,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/cancel": post_cancel}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/cancel": post_cancel}
 
 
 def main():

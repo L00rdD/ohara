@@ -284,6 +284,10 @@ test("the back of a series' shelves", () => {
   assert.equal(Ohara.decorUrl({ meta: {} }), null);
   assert.deepEqual(Ohara.decorChoices({ ...s, decor: "banner" }), ["banner", "cover", "none"]);
   assert.deepEqual(Ohara.decorChoices({ meta: {}, decor: "url:https://x.org/a.jpg" }), ["none", "url:https://x.org/a.jpg"]);
+  assert.deepEqual(Ohara.decorChoices({ meta: {}, kept: 7, decor: "none" }), ["none", "own:7"]);
+  assert.deepEqual(Ohara.decorChoices({ meta: {}, kept: 7, decor: "vol:S/T02.cbz" }), ["none", "own:7", "vol:S/T02.cbz"]);
+  assert.equal(Ohara.decorUrl({ name: "Fruits Basket", meta: {}, decor: "own:7" }), "/api/decor?series=Fruits%20Basket&v=7");
+  assert.equal(fr(() => Ohara.decorName(s, "own:7")), "Ton image");
   assert.equal(fr(() => Ohara.decorName(s, "vol:S/T02.cbz")), "Tome 2");
   assert.equal(fr(() => Ohara.decorName(s, "vol:S/gone.cbz")), "Un tome");
   assert.equal(fr(() => Ohara.decorName(s, "url:https://x.org/a.jpg")), "Image du web");
