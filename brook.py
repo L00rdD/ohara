@@ -54,9 +54,13 @@ def size_penalty(size):
     return 0
 
 
+WEAK = 3  # fewer seeders than this and a download may never start
+
+
 def best_first(r):
-    """With seeders first; then the right size, the lighter format, the most seeders."""
-    return (r["seeders"] == 0, round(size_penalty(r["size"]) * 4), audio_format(r["title"]), -r["seeders"])
+    """With seeders, then with enough of them; then the right size, the lighter
+    format, the most seeders."""
+    return (r["seeders"] == 0, r["seeders"] < WEAK, round(size_penalty(r["size"]) * 4), audio_format(r["title"]), -r["seeders"])
 
 
 def clean_title(stem):

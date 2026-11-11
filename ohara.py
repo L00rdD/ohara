@@ -244,12 +244,14 @@ def release(result):
 found_releases = {}
 
 
-def find_releases(query, category=7000, keep=is_manga):
+def find_releases(query, category=7000, keep=is_manga, which=None):
     """Every release of a category Prowlarr finds for query that keep() accepts (manga
-    volumes by default), remembered for a grab."""
+    volumes by default) on the indexers which() picks (those chosen in the settings
+    by default), remembered for a grab."""
     key = prowlarr_key()
+    ids = (which or indexer_ids)(key)
     # asking for the category on the indexers' side: manga are under Books, not drowned in videos
-    params = [("query", query), ("type", "search"), ("categories", category)] + [("indexerIds", i) for i in indexer_ids(key)]
+    params = [("query", query), ("type", "search"), ("categories", category)] + [("indexerIds", i) for i in ids]
     url = f"{PROWLARR_URL}/api/v1/search?" + urllib.parse.urlencode(params)
     results = [release(r) for r in http_json(url, headers={"X-Api-Key": key}, timeout=150) if keep(r)]
     for r in results:
@@ -475,11 +477,37 @@ def import_image_folders(source, dest):
     return len(folders)
 
 
+MUSIC_STALL = 6 * 3600  # a soundtrack still at nothing after this is given up
+
+
+def stalled(d, t, now):
+    """A soundtrack download that has not started at all after MUSIC_STALL."""
+    return d.get("kind") == "ost" and t["percentDone"] == 0 and now - d.get("at", now) > MUSIC_STALL
+
+
+def give_up_music(torrent_hash, d):
+    """Drops a soundtrack that does not come, and remembers not to take it again:
+    Brook picks the next best at his next pass."""
+    rpc("torrent-remove", {"ids": [torrent_hash], "delete-local-data": True})
+    shutil.rmtree(INCOMING / d["folder"], ignore_errors=True)
+
+    def change(state):
+        state["downloads"].pop(torrent_hash, None)
+        skipped = state["music"].get(d["series"], {}).get("skipped", []) + [d["title"]]
+        state["music"][d["series"]] = {"state": "none", "at": time.time(), "skipped": skipped}
+    update_state(change)
+    print(f"brook {d['series']}: gave up on {d['title']}", flush=True)
+
+
 def check_downloads():
-    """Files the finished downloads and forgets them. Runs every 30 s."""
+    """Files the finished downloads and forgets them, and gives up on the soundtracks
+    that never start. Runs every 30 s."""
     downloads = load_state()["downloads"]
     for t in torrents(list(downloads)):
         d = downloads.get(t["hashString"])
+        if d and stalled(d, t, time.time()):
+            give_up_music(t["hashString"], d)
+            continue
         if not d or t["percentDone"] < 1:
             continue
         source = INCOMING / d["folder"]
@@ -696,21 +724,33 @@ def music_due(status, now):
     return wait is not None and now - status.get("at", 0) > wait
 
 
+def audio_indexer_ids(key):
+    """Every indexer Prowlarr has on that files music (an Audio category): Brook
+    searches them all, not only those chosen for the manga."""
+    found = http_json(f"{PROWLARR_URL}/api/v1/indexer", headers={"X-Api-Key": key})
+    cats = lambda i: [c.get("id", 0) for c in (i.get("capabilities") or {}).get("categories", [])]
+    return [i["id"] for i in found if i.get("enable") and any(3000 <= c < 4000 for c in cats(i))]
+
+
 def find_soundtracks(series):
-    """The soundtrack releases of a series, the best first (see brook.best_first)."""
+    """The soundtrack releases of a series, the best first (see brook.best_first),
+    without those Brook already gave up on."""
     meta = lookup(series)
     names = brook.names_of(series, meta)
-    keep = lambda r: brook.is_soundtrack(r, names)
+    skipped = set(load_state()["music"].get(series, {}).get("skipped", []))
+    keep = lambda r: brook.is_soundtrack(r, names) and r["title"] not in skipped
     found = {}
     for query in (f"{series} OST", f"{series} soundtrack"):
-        for r in find_releases(query, category=3000, keep=keep):
+        for r in find_releases(query, category=3000, keep=keep, which=audio_indexer_ids):
             found[r["token"]] = r
     return sorted(found.values(), key=brook.best_first)
 
 
 def set_music(series, **status):
+    """Brook's status for a series; the releases he gave up on are kept across."""
     def change(state):
-        state["music"][series] = dict(status, at=time.time())
+        skipped = state["music"].get(series, {}).get("skipped", [])
+        state["music"][series] = dict(status, at=time.time(), **({"skipped": skipped} if skipped else {}))
     update_state(change)
 
 
@@ -734,7 +774,8 @@ def grab_music(series, token=None):
 
     def note(state):
         state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time()}
-        state["music"][series] = {"state": "downloading", "title": r["title"], "at": time.time()}
+        skipped = state["music"].get(series, {}).get("skipped", [])
+        state["music"][series] = {"state": "downloading", "title": r["title"], "at": time.time(), **({"skipped": skipped} if skipped else {})}
     update_state(note)
     return music_status(series)
 
@@ -804,6 +845,7 @@ def albums(series):
 def music_status(series):
     status = dict(load_state()["music"].get(series, {"state": "none"}))
     status.pop("at", None)
+    status.pop("skipped", None)
     return status
 
 

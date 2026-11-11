@@ -932,7 +932,7 @@ class BrookPicks(unittest.TestCase):
             self.rel("A Soundtrack", seeders=9, size=700e6),
         ]
         self.assertEqual([r["title"] for r in sorted(found, key=brook.best_first)],
-                         ["A OST (MP3 320)", "A Soundtrack", "A OST [FLAC]", "A OST Collection", "A OST mp3"])
+                         ["A Soundtrack", "A OST [FLAC]", "A OST Collection", "A OST (MP3 320)", "A OST mp3"])
         self.assertEqual(brook.size_penalty(1e9), 0)
         self.assertGreater(brook.size_penalty(10e9), brook.size_penalty(5e9))
 
@@ -970,11 +970,38 @@ class Brook(Library):
             {"guid": "b", "title": "Frieren T01 [CBZ]", "categories": [{"id": 7000}], "seeders": 50, "size": 3e8, "indexer": "Nyaa.si"},
         ]
         with mock.patch.object(ohara, "lookup", return_value={"names": ["Sousou no Frieren"]}), \
-                mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "indexer_ids", return_value=[1]), \
+                mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "audio_indexer_ids", return_value=[1]), \
                 mock.patch.object(ohara, "http_json", return_value=results) as http:
             found = ohara.find_soundtracks("Frieren")
-        self.assertEqual([r["title"] for r in found], ["Frieren Original Soundtrack [FLAC]"])
-        self.assertIn("categories=3000", http.call_args_list[0][0][0])
+            self.assertEqual([r["title"] for r in found], ["Frieren Original Soundtrack [FLAC]"])
+            self.assertIn("categories=3000", http.call_args_list[0][0][0])
+            ohara.save_state({"music": {"Frieren": {"state": "none", "skipped": ["Frieren Original Soundtrack [FLAC]"]}}})
+            self.assertEqual(ohara.find_soundtracks("Frieren"), [])
+
+    def test_audio_indexers(self):
+        found = [{"id": 1, "enable": True, "capabilities": {"categories": [{"id": 3000}]}},
+                 {"id": 2, "enable": True, "capabilities": {"categories": [{"id": 7000}]}},
+                 {"id": 3, "enable": False, "capabilities": {"categories": [{"id": 3040}]}},
+                 {"id": 4, "enable": True}]
+        with mock.patch.object(ohara, "http_json", return_value=found):
+            self.assertEqual(ohara.audio_indexer_ids("K"), [1])
+
+    def test_a_soundtrack_that_never_starts_is_given_up(self):
+        d = {"series": "One Piece", "title": "OP OST", "folder": "ost-1", "kind": "ost", "at": 1000}
+        self.assertFalse(ohara.stalled(d, {"percentDone": 0}, 1000 + 3600))
+        self.assertTrue(ohara.stalled(d, {"percentDone": 0}, 1000 + 7 * 3600))
+        self.assertFalse(ohara.stalled(d, {"percentDone": 0.01}, 1000 + 7 * 3600))
+        self.assertFalse(ohara.stalled(dict(d, kind="volumes"), {"percentDone": 0}, 1000 + 7 * 3600))
+        ohara.save_state({"downloads": {"H": d}, "music": {"One Piece": {"state": "downloading", "title": "OP OST", "skipped": ["older"]}}})
+        with mock.patch.object(ohara, "torrents", return_value=[{"hashString": "H", "percentDone": 0}]), mock.patch.object(ohara, "rpc") as rpc:
+            ohara.check_downloads()
+        rpc.assert_called_once_with("torrent-remove", {"ids": ["H"], "delete-local-data": True})
+        state = ohara.load_state()
+        self.assertEqual(state["downloads"], {})
+        self.assertEqual(state["music"]["One Piece"]["skipped"], ["older", "OP OST"])
+        self.assertEqual(ohara.music_status("One Piece"), {"state": "none"})
+        ohara.set_music("One Piece", state="searching")
+        self.assertEqual(ohara.load_state()["music"]["One Piece"]["skipped"], ["older", "OP OST"])
 
     def test_grab_the_best_or_say_none(self):
         best = {"token": "t1", "title": "Frieren OST", "seeders": 3, "_url": "magnet:?x"}
