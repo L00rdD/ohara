@@ -1327,8 +1327,9 @@ def keep_translations(lang, found):
 
 
 def said_title(title, said):
-    """"Le banquet d'Elbaph (エルバフの宴)"; the title alone when not translated."""
-    return f"{said} ({title})" if said and said != title else title
+    """"Le banquet d'Elbaph (エルバフの宴)", a capital first; the title alone when not
+    translated."""
+    return f"{said[:1].upper()}{said[1:]} ({title})" if said and said != title else title
 
 
 def say_titles(found, lang):

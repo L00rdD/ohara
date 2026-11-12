@@ -2070,6 +2070,7 @@ class Brook(Library):
         with mock.patch.object(ohara, "http_json", side_effect=AssertionError("not again")):
             self.assertEqual(ohara.music("One Piece", "fr")["albums"][0]["tracks"][0]["title"], "Le banquet d'Elbaph (エルバフの宴)")
         self.assertEqual(ohara.said_title("MMA", "MMA"), "MMA")
+        self.assertEqual(ohara.said_title("宴", "fête d'Elbaph"), "Fête d'Elbaph (宴)")
 
     def test_a_batch_that_loses_its_lines_is_translated_line_by_line(self):
         said = {"一\n二": [[["un deux", "x"]]], "一": [[["un", "x"]]], "二": [[["deux\n", "x"], [None]]]}
