@@ -30,12 +30,6 @@ test("the right half turns to the next page, the left half back", () => {
   assert.equal(Reader.zone(0.5), "next");
 });
 
-test("a manga turns forward with a click on the left half, a webtoon on the right", () => {
-  assert.equal(Reader.zone(0.1, true), "next");
-  assert.equal(Reader.zone(0.7, true), "prev");
-  assert.equal(Reader.zone(0.7, false), "next");
-});
-
 test("a wide page stands alone and the pages before it pair to end just before it", () => {
   assert.deepEqual(Reader.spreads(5, []), [[0], [1, 2], [3, 4]]);
   // One Piece en couleurs T001: a credits page more, the opening double page at 7

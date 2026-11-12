@@ -1,8 +1,8 @@
-// Ohara's reader: one volume, page by page or two pages side by side. A manga reads
-// right to left: the first page of two is on the right, a click on the left half turns
-// to the next page, on the right half back to the previous one; a webtoon the other
-// way. A double page kept as one wide image is shown alone, and the pages around it
-// paired as the book does. The bars show with the corner button, and while the mouse moves unless
+// Ohara's reader: one volume, page by page or two pages side by side. A click on the
+// right half turns to the next page, on the left half back to the previous one, as a
+// hint says for a moment when a volume opens. Two pages of a manga are laid as in the
+// book, the first on the right (a webtoon's the other way); a double page kept as one
+// wide image is shown alone, and the pages around it paired as the book does. The bars show with the corner button, and while the mouse moves unless
 // the button in the bottom bar has turned that off.
 // The page reached is saved on the server, so another device picks it up. Pages come
 // at the width of the screen; once a volume opens, all its pages come in the
@@ -45,9 +45,8 @@ const Reader = (() => {
     return s[0] === 0 ? 0 : spread(s[0] - 1, count, double, wide)[0];
   }
 
-  // Where a click lands, from its place across the screen (0 to 1): the left half
-  // turns forward in a book read right to left
-  const zone = (x, rtl) => ((x < 0.5) === Boolean(rtl) ? "next" : "prev");
+  // Where a click lands, from its place across the screen (0 to 1)
+  const zone = (x) => (x < 0.5 ? "prev" : "next");
 
   // The width in pixels a page is shown at: the window's, half of it for two pages
   const pageWidth = (w, ratio, double) => Math.ceil((w * ratio) / (double ? 2 : 1));
@@ -237,7 +236,7 @@ const Reader = (() => {
     $("title").textContent = document.title;
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
     $("slider").max = info.count;
-    document.body.classList.toggle("rtl", Boolean(info.rtl)); // the slider runs right to left too
+    hint();
     if (typeof Player !== "undefined") Player.open(info.series);
     await go(info.page >= info.count - 1 ? 0 : info.page);
     fetchAll();
@@ -252,6 +251,14 @@ const Reader = (() => {
     if (!found || info !== opened || !found.wide.length) return;
     info.wide = found.wide;
     if (settings.double) go(page);
+  }
+
+  // which half of the screen turns which way, said for a moment as a volume opens
+  function hint() {
+    const h = $("hint");
+    h.classList.remove("on");
+    void h.offsetWidth; // the fade starts over for the next volume
+    h.classList.add("on");
   }
 
   // the bars: shown by the corner button, or for a few seconds while the mouse moves
@@ -282,8 +289,7 @@ const Reader = (() => {
   }
 
   function keys(e) {
-    const [left, right] = info.rtl ? [next, prev] : [prev, next];
-    const k = { ArrowLeft: left, ArrowRight: right, " ": next, PageDown: next, PageUp: prev, Escape: () => (location.href = $("back").href) }[e.key];
+    const k = { ArrowLeft: prev, ArrowRight: next, " ": next, PageDown: next, PageUp: prev, Escape: () => (location.href = $("back").href) }[e.key];
     if (!k) return;
     e.preventDefault();
     k();
@@ -299,7 +305,7 @@ const Reader = (() => {
       openVolume(info.next);
     };
     $("slider").oninput = (e) => go(+e.target.value - 1);
-    $("stage").onclick = (e) => (zone(e.clientX / innerWidth, info.rtl) === "next" ? next() : prev());
+    $("stage").onclick = (e) => (zone(e.clientX / innerWidth) === "next" ? next() : prev());
     $("menu").onclick = toggleBars;
     addEventListener("pointermove", peekBars);
     $("mode").onclick = () => setting("double", !settings.double);

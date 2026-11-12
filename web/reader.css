@@ -27,7 +27,13 @@ body.bars #top, body.bars #bottom { transform: none; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .count { font-variant-numeric: tabular-nums; color: #c9ae86; }
 #slider { flex: 1; accent-color: #f0b44c; }
-body.rtl #slider { direction: rtl; }
+/* which half turns which way: shown faded as a volume opens, then gone */
+.hint { position: fixed; inset: 0; z-index: 1; display: flex; pointer-events: none; opacity: 0; }
+.hint span { flex: 1; display: flex; align-items: center; padding: 0 6vw; font-size: 1.3rem; font-weight: 600; color: #f1e9d6; text-shadow: 0 1px 6px #000; }
+.hint .prev { justify-content: flex-start; background: linear-gradient(to right, rgba(42, 26, 14, 0.75), transparent 70%); }
+.hint .next { justify-content: flex-end; background: linear-gradient(to left, rgba(42, 26, 14, 0.75), transparent 70%); }
+.hint.on { animation: hint 2.6s ease-in-out; }
+@keyframes hint { 0% { opacity: 0; } 15%, 65% { opacity: 1; } 100% { opacity: 0; } }
 
 .btn {
   display: inline-block; padding: 8px 14px; border: 1px solid #6b4528; border-radius: 999px; background: #3a2414;
