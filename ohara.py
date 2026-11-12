@@ -2012,7 +2012,26 @@ def volume_pages(vid, rid=None):
         "wide": known_wide(path),
         "page": saved.get("page", 0),
         "next": volume_id(nxt) if nxt else None,
+        "eyecatches": eyecatches(series.name),
     }
+
+
+EYECATCH_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+                  ".svg": "image/svg+xml"}  # a drawing, animated
+
+
+def eyecatch_folder(series):
+    return STATE_DIR / "eyecatches" / safe_name(series)
+
+
+def eyecatches(series):
+    """The videos and animated drawings played between two volumes of a series, as the
+    anime's eyecatch between the two halves of an episode: those put in
+    .ohara/eyecatches/<series>/."""
+    folder = eyecatch_folder(series)
+    if not folder.is_dir():
+        return []
+    return sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in EYECATCH_TYPES)
 
 
 def save_progress(vid, page, count, rid=None):
@@ -2285,6 +2304,14 @@ def send_file(h, path, ctype):
             left -= len(chunk)
 
 
+def get_eyecatch(h):
+    q = h.query()
+    if q["name"] not in eyecatches(q["series"]):
+        raise KeyError(q["name"])
+    path = eyecatch_folder(q["series"]) / q["name"]
+    send_file(h, path, EYECATCH_TYPES[path.suffix.lower()])
+
+
 def get_track(h):
     path = music_path(h.query()["id"])
     send_file(h, path, brook.AUDIO.get(path.suffix.lower(), "application/octet-stream"))
@@ -2357,6 +2384,7 @@ GET_ROUTES = {
     "/api/file": get_file,
     "/api/cover": get_cover,
     "/api/decor": get_decor,
+    "/api/eyecatch": get_eyecatch,
     "/api/ailments": lambda h: h.send(200, ailments(fresh=h.query().get("fresh") == "1")),
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,

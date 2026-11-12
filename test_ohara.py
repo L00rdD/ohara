@@ -719,8 +719,28 @@ class Reading(Library):
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
-        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "rtl": True, "count": 2, "wide": None, "page": 1, "next": "Naruto/Naruto T04.cbz"})
+        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "rtl": True, "count": 2, "wide": None, "page": 1, "next": "Naruto/Naruto T04.cbz", "eyecatches": []})
         self.assertIsNone(ohara.volume_pages("Naruto/Naruto T04.cbz")["next"])
+
+    def test_the_eyecatches_of_a_series_and_their_streaming(self):
+        folder = self.root / ".ohara" / "eyecatches" / "Naruto"
+        folder.mkdir(parents=True)
+        (folder / "b.webm").write_bytes(b"webm")
+        (folder / "c.svg").write_text("<svg/>")
+        (folder / "a.MP4").write_bytes(bytes(range(50)))
+        (folder / "notes.txt").write_text("not a video")
+        (folder / "old.mp4").mkdir()
+        self.assertEqual(ohara.volume_pages("Naruto/Naruto T02.cbz")["eyecatches"], ["a.MP4", "b.webm", "c.svg"])
+        self.assertEqual(ohara.eyecatches("Bleach"), [])
+        fake = Http("test_log_is_quiet")
+        fake.root = self.root
+        code, head, body = fake.call_range("/api/eyecatch?series=Naruto&name=a.MP4", "bytes=10-19")
+        self.assertEqual((code, body), (206, bytes(range(10, 20))))
+        self.assertIn("video/mp4", head)
+        self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=b.webm")[:3:2], (200, b"webm"))
+        self.assertIn("image/svg+xml", fake.call("GET", "/api/eyecatch?series=Naruto&name=c.svg")[1])
+        self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=notes.txt")[0], 404)
+        self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=../../state.json")[0], 404)
 
     def test_the_size_of_a_page_from_its_first_bytes(self):
         from PIL import Image

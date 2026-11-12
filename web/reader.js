@@ -7,7 +7,8 @@
 // The page reached is saved on the server, so another device picks it up. Pages come
 // at the width of the screen; once a volume opens, all its pages come in the
 // background and stay in memory, so turning a page does not wait on the network. A
-// page shows only once it is whole, the one before stays until then.
+// page shows only once it is whole, the one before stays until then. Between two
+// volumes, one of the series' eyecatches plays if some were put on the server.
 const Reader = (() => {
   // ---- pure page arithmetic (tested in node) ----
 
@@ -253,6 +254,23 @@ const Reader = (() => {
     if (settings.double) go(page);
   }
 
+  // the next volume, opened behind one of the series' eyecatches when the server has
+  // some: a short video, or an animated drawing, as between the two halves of an
+  // episode of the anime. It goes once it is over and the volume is there; a click
+  // cuts it short.
+  async function between() {
+    const url = Eyecatch.url(info.series, info.eyecatches, Math.random());
+    const opening = openVolume(info.next);
+    if (!url) return opening;
+    const box = $("eyecatch");
+    const skipped = new Promise((done) => (box.onclick = done));
+    box.hidden = false;
+    const shown = Eyecatch.show(box, url);
+    await Promise.all([Promise.race([shown.over, skipped]), opening.catch(() => {})]);
+    shown.stop();
+    box.hidden = true;
+  }
+
   // which half of the screen turns which way, said for a moment as a volume opens
   function hint() {
     const h = $("hint");
@@ -302,7 +320,7 @@ const Reader = (() => {
     $("next-volume").onclick = (e) => {
       e.preventDefault();
       history.replaceState(null, "", $("next-volume").href);
-      openVolume(info.next);
+      between();
     };
     $("slider").oninput = (e) => go(+e.target.value - 1);
     $("stage").onclick = (e) => (zone(e.clientX / innerWidth) === "next" ? next() : prev());

@@ -51,6 +51,11 @@ body.bars #top, body.bars #bottom { transform: none; }
 }
 .end p { font-size: 1.4rem; margin: 0 0 8px; }
 
+/* between two volumes, the series' eyecatch over everything, as in the anime */
+.eyecatch { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: #000; cursor: pointer; animation: eyecatch .25s ease-out; }
+.eyecatch video, .eyecatch img { width: 100%; height: 100%; object-fit: contain; }
+@keyframes eyecatch { from { opacity: 0; } }
+
 @media (max-width: 600px) {
   #bottom { flex-wrap: wrap; justify-content: space-between; }
   #slider { flex-basis: 100%; }

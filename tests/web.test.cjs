@@ -2,6 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const Reader = require("../web/reader.js");
+const Eyecatch = require("../web/eyecatch.js");
 const Ohara = require("../web/words.js");
 const I18n = require("../web/i18n.js");
 
@@ -23,6 +24,16 @@ test("two pages: the cover alone, then pairs", () => {
   assert.equal(Reader.after(2, 10, true), 3);
   assert.equal(Reader.before(4, 10, true), 1);
   assert.equal(Reader.before(1, 10, true), 0);
+});
+
+test("between two volumes, one of the series' eyecatches, drawn at random", () => {
+  assert.equal(Eyecatch.url("One Piece", [], 0.5), null);
+  assert.equal(Eyecatch.url("One Piece", undefined, 0.5), null);
+  assert.equal(Eyecatch.url("One Piece", ["a.mp4", "b & c.webm"], 0), "/api/eyecatch?series=One%20Piece&name=a.mp4");
+  assert.equal(Eyecatch.url("One Piece", ["a.mp4", "b & c.webm"], 0.99), "/api/eyecatch?series=One%20Piece&name=b%20%26%20c.webm");
+  assert.equal(Eyecatch.url("One Piece", ["a.mp4"], 1), "/api/eyecatch?series=One%20Piece&name=a.mp4");
+  assert.ok(Eyecatch.isDrawing(Eyecatch.url("Naruto", ["shuriken.SVG"], 0)));
+  assert.ok(!Eyecatch.isDrawing(Eyecatch.url("Naruto", ["svg.mp4"], 0)));
 });
 
 test("the right half turns to the next page, the left half back", () => {
