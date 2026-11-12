@@ -1,5 +1,5 @@
 // A series' sheet: its cover and facts, how much of it is read, the button to read
-// on, following, the missing tomes, its music (Brook), and every volume with what
+// on, following (as a webtoon: by chapters, in English), the missing tomes, its music (Brook), and every volume with what
 // can be done with its reading (mark read, read up to here, back to unread), and the
 // back of its shelves.
 const Sheet = (() => {
@@ -24,17 +24,18 @@ const Sheet = (() => {
     return a;
   }
 
-  function followSwitch(s) {
+  // a switch of the series, saved at once: following it, or following it as a webtoon
+  function seriesSwitch(s, key, label, hint) {
     const sw = el("button", "switch");
     sw.type = "button";
     sw.setAttribute("role", "switch");
-    sw.setAttribute("aria-checked", String(s.follow));
-    sw.title = W().followHint;
-    sw.append(el("span", "knob"), el("span", "", W().followSeries));
+    sw.setAttribute("aria-checked", String(Boolean(s[key])));
+    sw.title = hint;
+    sw.append(el("span", "knob"), el("span", "", label));
     sw.onclick = async () => {
-      s.follow = !s.follow;
-      sw.setAttribute("aria-checked", String(s.follow));
-      await api("/api/follow", { series: s.name, follow: s.follow });
+      s[key] = !s[key];
+      sw.setAttribute("aria-checked", String(s[key]));
+      await api("/api/" + key, { series: s.name, [key]: s[key] });
       load();
     };
     return sw;
@@ -246,7 +247,7 @@ const Sheet = (() => {
     img.src = s.meta.cover || coverUrl(s.volumes[0].id);
     const text = el("div");
     const acts = el("div", "actions");
-    acts.append(read, followSwitch(s));
+    acts.append(read, seriesSwitch(s, "follow", W().followSeries, W().followHint), seriesSwitch(s, "webtoon", W().webtoonSeries, W().webtoonHint));
     const facts = el("p", "facts");
     facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
     text.append(el("h2", "", s.name), facts, Doctor.forSeries(s.name), acts, progress(s), gaps(s), musicBox(s), decorBox(s));

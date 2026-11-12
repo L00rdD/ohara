@@ -23,6 +23,11 @@ TOME_RANGE = re.compile(r"(?i)" + _TOME + r"(\d{1,4})(?:\s*(?:à|-|–|to|&|et)\
 CHAPTER = re.compile(r"(?i)(?<![^\W\d_])(?:c|ch|chap|chapters?|chapitres?|ep|[ée]pisodes?)[\s._-]*#?\s*0*(\d+(?:\.\d+)?)")
 # a webtoon's season: "S1", "S1-2", "Season 2", "Saison 2"
 SEASON = r"s(?:eason|aison)?\s*\d{1,2}"
+# a run of chapters in a release title: "ch001-158", "c045-060", "Chapters 1 to 30"
+CHAPTER_RANGE = re.compile(r"(?i)(?<![^\W\d_])(?:c|ch|chap|chapters?|chapitres?|ep|[ée]pisodes?)[\s._-]*#?\s*0*(\d{1,4})"
+                           r"(?:\s*(?:à|-|–|to)\s*(?:(?:c|ch|chap)\.?\s*)?0*(\d{1,4}))?(?!\d)")
+# what says a release is a webtoon's: its word, a webtoon store, a season
+WEBTOON = re.compile(r"(?i)\bweb-?toons?\b|\btappytoon\b|\blezhin\b|\bs(?:eason|aison)?\s*\d{1,2}(?:\s*-\s*\d{1,2})?\b")
 SERIES_END = re.compile(r"(?i)[\s._-]*(\b(tomes?|t\d+|vol(ume)?s?|v\d+|int[ée]grale|cbz|cbr|pdf|epub|ebook|complete|chapitres?|"
                         r"(?:c|ch|chap|chapters?|ep|episodes?)\.?\s*\d+|" + SEASON + r")\b|\d+\s*(à|-|to)\s*\d+|\|).*$")
 
@@ -89,6 +94,24 @@ def tome_range(title):
     lo = int(m.group(1))
     hi = int(m.group(2)) if m.group(2) else lo
     return (lo, hi) if hi >= lo else (lo, lo)
+
+
+def chapter_range(title):
+    """(1, 158) for "… ch001-158", (12, 12) for "… c012", None when the title says no
+    chapter (a season, "S1-2", says which chapters only inside)."""
+    m = CHAPTER_RANGE.search(BRACKETS.sub(" ", title))
+    if not m:
+        return None
+    lo = int(m.group(1))
+    hi = int(m.group(2)) if m.group(2) else lo
+    return (lo, hi) if hi >= lo else (lo, lo)
+
+
+def webtoon_pack(title):
+    """Whether a release is a webtoon's chapters: it says webtoon, a webtoon store or
+    a season, or it holds chapters in English rather than tomes."""
+    english_chapters = chapter_range(title) and not tome_range(title) and language(title) != "FR"
+    return bool(WEBTOON.search(title) or english_chapters)
 
 
 def language(title, indexer=""):

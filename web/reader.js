@@ -192,12 +192,20 @@ const Reader = (() => {
     $("end").hidden = false;
   }
 
+  // "Tome 5", "Volume 5", "Chapter 5" in the interface's language, or the file's name
+  function volumeTitle(v) {
+    const w = I18n.words();
+    if (!v.number) return v.label;
+    const said = v.chapter ? w.chapters(v.number, v.number) : w.volume(v.number);
+    return said.charAt(0).toUpperCase() + said.slice(1);
+  }
+
   // a volume opens in the same page, so the music goes on from one volume to the next
   async function openVolume(id) {
     vid = id;
     forget();
     info = await (await fetch(`/api/pages?vol=${encodeURIComponent(vid)}&w=${width}`)).json();
-    document.title = `${info.series} · ${info.label}`;
+    document.title = `${info.series} · ${volumeTitle(info)}`;
     $("title").textContent = document.title;
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
     $("slider").max = info.count;
