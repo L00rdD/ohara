@@ -72,8 +72,12 @@ const Sheet = (() => {
     const tracks = m.albums.reduce((n, a) => n + a.tracks.length, 0);
     const said = tracks ? `♪ ${m.albums.length} ${W().albumsTitle.toLowerCase()}, ${W().trackCount(tracks)}` : Music.brookSays(m.status, s.name, W());
     const acts = el("div", "actions");
-    if (["none", "notfound", "error"].includes(m.status.state) && !tracks) acts.append(button(W().askBrook, "button", () => askBrook(s, box)));
-    acts.append(button(W().otherSoundtrack, "button", () => soundtracks(s, box)));
+    const choices = {
+      brook: () => button(W().askBrook, "button", () => askBrook(s, box)),
+      pick: () => button(W().pickSoundtrack, "button", () => soundtracks(s, box)),
+      add: () => button(W().addSoundtrack, "button", () => soundtracks(s, box)),
+    };
+    acts.append(...Music.musicChoices(m.status.state, tracks).map((c) => choices[c]()));
     box.replaceChildren(el("p", "note", said), acts);
   }
 
@@ -86,11 +90,11 @@ const Sheet = (() => {
 
   // the soundtracks the indexers have for a series, to pick one
   async function soundtracks(s, box) {
-    box.replaceChildren(el("p", "note", Music.brookSays({ state: "searching" }, s.name, W())));
+    box.replaceChildren(el("p", "note", W().soundtracksSearching(s.name)));
     const found = await api("/api/soundtracks?series=" + encodeURIComponent(s.name)).catch(() => []);
     const list = el("ul", "picks");
     list.append(...found.slice(0, 8).map((r) => soundtrackRow(s, box, r)));
-    box.replaceChildren(found.length ? list : el("p", "note", Music.brookSays({ state: "notfound" }, s.name, W())));
+    box.replaceChildren(found.length ? list : el("p", "note", W().soundtracksNone(s.name)));
   }
 
   function soundtrackRow(s, box, r) {

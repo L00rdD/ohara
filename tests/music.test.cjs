@@ -58,6 +58,13 @@ test("what is said of Brook's work", () => {
   assert.equal(M.brookSays({ state: "none" }, "OP", w), "rien encore pour OP");
 });
 
+test("the music's buttons: choose before any music, add once some is here or coming", () => {
+  for (const state of ["none", "notfound", "error"]) assert.deepEqual(M.musicChoices(state, 0), ["brook", "pick"]);
+  assert.deepEqual(M.musicChoices("downloading", 0), ["add"]);
+  assert.deepEqual(M.musicChoices("searching", 0), ["add"]);
+  assert.deepEqual(M.musicChoices("none", 12), ["add"]);
+});
+
 test("adding and taking a track out of an ambience", () => {
   assert.deepEqual(M.withTrack(["a"], "b", true), ["a", "b"]);
   assert.deepEqual(M.withTrack(["a"], "a", true), ["a"]);

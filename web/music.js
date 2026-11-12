@@ -48,6 +48,12 @@ const Music = (() => {
     return say ? say(series) : words.brookNone(series);
   }
 
+  // the buttons of a series' music: before any music, let Brook choose or choose
+  // yourself; once some is here or on its way, add another one
+  function musicChoices(state, tracks) {
+    return tracks || state === "downloading" || state === "searching" ? ["add"] : ["brook", "pick"];
+  }
+
   const trackUrl = (id) => "/api/track?id=" + encodeURIComponent(id);
   const artUrl = (id) => (id ? "/api/art?id=" + encodeURIComponent(id) : null);
 
@@ -78,7 +84,7 @@ const Music = (() => {
   // the repeat button: its sign, whether it is off, and what it says
   const repeatLook = (repeat, words) => ({ sign: repeat === "one" ? "🔂" : "🔁", off: repeat === "none", title: words.repeats[repeat] });
 
-  return { REPEATS, pillLook, resumePoint, ambienceLook, repeatLook, ambiences, nextIndex, prevIndex, nextRepeat, shuffled, clock, brookSays, trackUrl, artUrl, withTrack };
+  return { REPEATS, pillLook, resumePoint, ambienceLook, repeatLook, ambiences, nextIndex, prevIndex, nextRepeat, shuffled, clock, brookSays, musicChoices, trackUrl, artUrl, withTrack };
 })();
 
 if (typeof module !== "undefined") module.exports = Music;
