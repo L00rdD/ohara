@@ -97,3 +97,12 @@ test("the look of an ambience and of the repeat button", () => {
   assert.deepEqual(M.repeatLook("one", words), { sign: "🔂", off: false, title: "un" });
   assert.deepEqual(M.repeatLook("none", words), { sign: "🔁", off: true, title: "non" });
 });
+
+test("the ambience playing keeps its place once its titles are translated", () => {
+  const list = [{ key: "album:エルバフ", name: "Elbaph (エルバフ)", tracks: [{ id: "a", title: "Fête (宴)" }] }];
+  assert.deepEqual(M.sameAmbience(list, { key: "album:エルバフ", tracks: [{ id: "a", title: "宴" }] }), { name: "Elbaph (エルバフ)", tracks: list[0].tracks });
+  assert.deepEqual(M.sameAmbience(list, { key: "mood:Calme", tracks: [] }), {});
+  assert.deepEqual(M.sameAmbience(list, { key: "album:エルバフ", tracks: [] }), {});
+  const shelf = M.ambiences({ albums: [{ id: "エルバフ", name: "Elbaph (エルバフ)", art: null, tracks: [{ id: "a", title: "x" }] }], moods: [] }, "All");
+  assert.equal(shelf[0].key, "album:エルバフ");
+});

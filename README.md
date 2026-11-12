@@ -41,10 +41,14 @@ Tree of Knowledge.
   again where you left it, and the phone's lock screen controls it. Brook can be
   switched off in the settings; a series' sheet says what he did and lets you pick
   another soundtrack. Your own music files can go in `.ost/<Series>/<Album>/` too.
+  Titles and albums in Japanese, Chinese or Korean are shown translated into the
+  interface's language, the original after them in brackets: Google Translate's free
+  endpoint (no key, only the titles are sent) translates each once, in the
+  background, and Ohara keeps them in `.ohara/translations.json`.
 - **Where you are.** A volume read wears a gilt tick on its spine, one started a
   ribbon; a plaque says how much of its series is read. A series' sheet says how many
   volumes are read, started and still to read, with *Tout marquer comme lu* and *Tout
-  remettre à zéro* (touched twice), and each volume's ⋯ menu marks it read, reads up
+  marquer comme non lu* (touched twice), and each volume's ⋯ menu marks it read, reads up
   to it (handy for a series already read on paper) or puts it back to unread. On the
   shelves, touching a volume pins a card under the lectern: read it, mark it read (or
   back to unread), or open its series' sheet; touching it again opens it. The card

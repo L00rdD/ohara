@@ -1246,7 +1246,8 @@ def music_path(tid):
 
 
 def albums(series):
-    """The albums of a series' music: [{name, art, tracks: [{id, title}]}]."""
+    """The albums of a series' music: [{id, name, art, tracks: [{id, title}]}], the id
+    the name before any translation."""
     root = MUSIC / safe_name(series)
     if not root.exists():
         return []
@@ -1259,7 +1260,8 @@ def albums(series):
     for name, tracks in found.items():
         folder = root / name if name else root
         art = next((a for a in folder.glob("cover.*") if a.suffix.lower() in brook.ART), None)
-        out.append({"name": brook.album_name(name) if name else series, "art": art.relative_to(MUSIC).as_posix() if art else None, "tracks": tracks})
+        shown = brook.album_name(name) if name else series
+        out.append({"id": shown, "name": shown, "art": art.relative_to(MUSIC).as_posix() if art else None, "tracks": tracks})
     return out
 
 
@@ -1270,7 +1272,9 @@ def music_status(series):
     return status
 
 
-def music(series):
+def music(series, lang=None):
+    """A series' music; titles in Japanese, Chinese or Korean said in the interface's
+    language, the original after them in brackets, once translated."""
     series = tune(series)
     state = load_state()
     found = albums(series)
@@ -1278,10 +1282,105 @@ def music(series):
     if found and status.get("state") in ("none", "notfound"):
         status = {"state": "ready"}
     moods = [{"name": k, "tracks": v} for k, v in sorted(state["moods"].get(series, {}).items())]
-    return {"status": status, "albums": found, "moods": moods}
+    out = {"status": status, "albums": found, "moods": moods}
+    if lang:
+        out["translating"] = say_titles(found, lang)
+    return out
 
 
-def set_mood(series, name, tracks):
+# ---------- titles translated ----------
+# A soundtrack's titles are often in Japanese. They are translated once into the
+# interface's language by Google Translate (its free endpoint, without a key: only the
+# titles are sent), in the background, and kept in .ohara/translations.json.
+FOREIGN = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff66-\uff9f]")  # kana, kanji, hangul
+LANGS = ("fr", "en")
+TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+TRANSLATE_RETRY = 3600  # after Google failed, an hour before asking again
+translations = {"kept": None, "failed": 0}
+translations_lock = threading.Lock()
+translating = threading.Lock()
+
+
+def translations_file():
+    return STATE_DIR / "translations.json"
+
+
+def kept_translations():
+    """{lang: {original: translation}}, read from the disk once."""
+    with translations_lock:
+        if translations["kept"] is None:
+            try:
+                translations["kept"] = json.loads(translations_file().read_text())
+            except (OSError, ValueError):
+                translations["kept"] = {}
+        return translations["kept"]
+
+
+def keep_translations(lang, found):
+    with translations_lock:
+        translations["kept"].setdefault(lang, {}).update(found)
+        out = translations_file()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text(json.dumps(translations["kept"], ensure_ascii=False))
+        tmp.replace(out)
+
+
+def said_title(title, said):
+    """"Le banquet d'Elbaph (エルバフの宴)"; the title alone when not translated."""
+    return f"{said} ({title})" if said and said != title else title
+
+
+def say_titles(found, lang):
+    """Gives the albums and tracks of found their translated titles; True while some
+    are still being translated."""
+    lang = lang if lang in LANGS else LANGS[0]
+    known = kept_translations().get(lang, {})
+    titles = [a["name"] for a in found] + [t["title"] for a in found for t in a["tracks"]]
+    missing = sorted({t for t in titles if FOREIGN.search(t) and t not in known})
+    for a in found:
+        a["name"] = said_title(a["name"], known.get(a["name"]))
+        for t in a["tracks"]:
+            t["title"] = said_title(t["title"], known.get(t["title"]))
+    if not missing or time.time() - translations["failed"] < TRANSLATE_RETRY:
+        return False
+    threading.Thread(target=translate_missing, args=(missing, lang), daemon=True).start()
+    return True
+
+
+def translate_missing(texts, lang):
+    """Translates texts and keeps them, one series at a time; a failure waits an hour."""
+    if not translating.acquire(blocking=False):
+        return
+    try:
+        keep_translations(lang, translate(texts, lang))
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+        translations["failed"] = time.time()
+        print(f"translate: {e}", flush=True)
+    finally:
+        translating.release()
+
+
+def translate(texts, lang):
+    """{text: translation}, asked of Google 40 lines at a time; a batch that comes
+    back with another number of lines is asked again one line at a time."""
+    found = {}
+    for i in range(0, len(texts), 40):
+        batch = texts[i:i + 40]
+        lines = google_translate("\n".join(batch), lang).split("\n")
+        if len(lines) != len(batch):
+            lines = [google_translate(t, lang) for t in batch]
+        found.update({t: said.strip() for t, said in zip(batch, lines) if said.strip()})
+    return found
+
+
+def google_translate(text, lang):
+    query = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": lang, "dt": "t", "q": text})
+    answer = http_json(f"{TRANSLATE_URL}?{query}", headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+    return "".join(part[0] for part in answer[0] if part and part[0])
+
+
+def set_mood(series, name, tracks, lang=None):
     """Creates, changes or (with no tracks) removes one of a series' own ambiences."""
     series, name = tune(series), (name or "").strip()[:60]
     if not name:
@@ -1294,7 +1393,7 @@ def set_mood(series, name, tracks):
         else:
             moods.pop(name, None)
     update_state(change)
-    return music(series)
+    return music(series, lang)
 
 
 def brook_pass():
@@ -2206,7 +2305,7 @@ def post_music(h):
 
 def post_mood(h):
     b = h.body()
-    h.send(200, set_mood(b["series"], b.get("name"), b.get("tracks") or []))
+    h.send(200, set_mood(b["series"], b.get("name"), b.get("tracks") or [], b.get("lang")))
 
 
 def post_read(h):
@@ -2260,7 +2359,7 @@ GET_ROUTES = {
     "/api/ailments": lambda h: h.send(200, ailments(fresh=h.query().get("fresh") == "1")),
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,
-    "/api/music": lambda h: h.send(200, music(h.query()["series"])),
+    "/api/music": lambda h: h.send(200, music(h.query()["series"], h.query().get("lang"))),
     "/api/soundtracks": get_soundtracks,
     "/api/track": get_track,
     "/api/art": get_art,

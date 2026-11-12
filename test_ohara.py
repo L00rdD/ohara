@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -59,6 +60,7 @@ class Library(unittest.TestCase):
         ohara.pages_cache.clear()
         ohara.page_memory.clear()
         ohara.shapes_memory.clear()
+        ohara.translations.update(kept=None, failed=0)
         ohara.torrents_seen.clear()
 
     def tearDown(self):
@@ -870,16 +872,17 @@ class Http(Reading):
         return int(head.split()[1]), head.decode(), payload
 
     def test_music_routes(self):
-        with mock.patch.object(ohara, "music", return_value={"albums": []}):
-            self.assertEqual(json.loads(self.call("GET", "/api/music?series=N")[2]), {"albums": []})
+        with mock.patch.object(ohara, "music", return_value={"albums": []}) as music:
+            self.assertEqual(json.loads(self.call("GET", "/api/music?series=N&lang=en")[2]), {"albums": []})
+        music.assert_called_once_with("N", "en")
         with mock.patch.object(ohara, "find_soundtracks", return_value=[{"token": "t", "_url": "x"}]):
             self.assertEqual(json.loads(self.call("GET", "/api/soundtracks?series=N")[2]), [{"token": "t"}])
         with mock.patch.object(ohara, "grab_music", return_value={"state": "downloading"}) as grab:
             self.assertEqual(self.call("POST", "/api/music", {"series": "N"})[0], 200)
         grab.assert_called_once_with("N", None)
         with mock.patch.object(ohara, "set_mood", return_value={"moods": []}) as mood:
-            self.call("POST", "/api/mood", {"series": "N", "name": "Calme", "tracks": ["a"]})
-        mood.assert_called_once_with("N", "Calme", ["a"])
+            self.call("POST", "/api/mood", {"series": "N", "name": "Calme", "tracks": ["a"], "lang": "fr"})
+        mood.assert_called_once_with("N", "Calme", ["a"], "fr")
 
     def test_pages_api(self):
         code, _, body = self.call("GET", "/api/pages?vol=Naruto%2FNaruto%20T01.cbz")
@@ -2036,6 +2039,54 @@ class Brook(Library):
             with self.assertRaises(KeyError):
                 ohara.music_path(bad)
         self.assertEqual(ohara.albums("Nothing"), [])
+
+    def test_titles_in_japanese_are_translated_once_and_kept(self):
+        folder = self.root / ".ost" / "One Piece" / "[261028] エルバフ OST [FLAC]"
+        folder.mkdir(parents=True)
+        (folder / "01. a.mp3").write_bytes(mp3("エルバフの宴"))
+        (folder / "02. b.mp3").write_bytes(mp3("MMA"))
+
+        class Now:  # the translation runs at once, not in the background
+            def __init__(self, target, args, daemon):
+                self.run = lambda: target(*args)
+
+            def start(self):
+                self.run()
+        google = lambda lines: [[[lines, "x"]], None, "ja"]
+        answers = {"エルバフ OST\nエルバフの宴": google("Elbaph OST\nLe banquet d'Elbaph")}
+        asked = lambda url, headers, timeout: answers[urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["q"][0]]
+        with mock.patch.object(ohara.threading, "Thread", Now), mock.patch.object(ohara, "http_json", side_effect=asked) as http:
+            first = ohara.music("One Piece", "fr")
+            self.assertTrue(first["translating"])
+            self.assertEqual(first["albums"][0]["tracks"][0]["title"], "エルバフの宴")  # not yet
+            m = ohara.music("One Piece", "xx")  # an unknown language: French
+        self.assertEqual(http.call_count, 1)
+        self.assertIn("tl=fr", http.call_args[0][0])
+        self.assertFalse(m["translating"])
+        self.assertEqual([t["title"] for t in m["albums"][0]["tracks"]], ["Le banquet d'Elbaph (エルバフの宴)", "MMA"])
+        self.assertEqual((m["albums"][0]["id"], m["albums"][0]["name"]), ("エルバフ OST", "Elbaph OST (エルバフ OST)"))
+        self.assertNotIn("translating", ohara.music("One Piece"))
+        ohara.translations["kept"] = None
+        with mock.patch.object(ohara, "http_json", side_effect=AssertionError("not again")):
+            self.assertEqual(ohara.music("One Piece", "fr")["albums"][0]["tracks"][0]["title"], "Le banquet d'Elbaph (エルバフの宴)")
+        self.assertEqual(ohara.said_title("MMA", "MMA"), "MMA")
+
+    def test_a_batch_that_loses_its_lines_is_translated_line_by_line(self):
+        said = {"一\n二": [[["un deux", "x"]]], "一": [[["un", "x"]]], "二": [[["deux\n", "x"], [None]]]}
+        asked = lambda url, headers, timeout: said[urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["q"][0]]
+        with mock.patch.object(ohara, "http_json", side_effect=asked):
+            self.assertEqual(ohara.translate(["一", "二"], "fr"), {"一": "un", "二": "deux"})
+
+    def test_google_away_waits_an_hour(self):
+        found = [{"name": "x", "tracks": [{"id": "a", "title": "宴"}]}]
+        with mock.patch.object(ohara, "http_json", side_effect=OSError("offline")):
+            ohara.translate_missing(["宴"], "fr")
+        self.assertGreater(ohara.translations["failed"], 0)
+        with mock.patch.object(ohara.threading, "Thread", side_effect=AssertionError("not now")):
+            self.assertFalse(ohara.say_titles(found, "fr"))
+        with ohara.translating:  # another series being translated: this one waits its turn
+            ohara.translate_missing(["宴"], "fr")
+        self.assertEqual(ohara.kept_translations(), {})
 
     def test_brook_pass_one_series_at_a_time(self):
         for name in ("Berserk", "Frieren"):

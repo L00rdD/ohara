@@ -175,7 +175,7 @@ const Player = (() => {
 
   async function saveMood(name, id, add) {
     const mood = music.moods.find((m) => m.name === name);
-    music = await api("/api/mood", { series, name, tracks: Music.withTrack(mood ? mood.tracks : [], id, add) });
+    music = await api("/api/mood", { series, name, tracks: Music.withTrack(mood ? mood.tracks : [], id, add), lang: I18n.get() });
     list = Music.ambiences(music, W().allShuffled);
     draw();
   }
@@ -232,10 +232,28 @@ const Player = (() => {
     audio.pause();
     series = name;
     current = null;
-    music = await api("/api/music?series=" + encodeURIComponent(name));
+    music = await fetchMusic(name);
     list = Music.ambiences(music, W().allShuffled);
     resume(Music.resumePoint(recall(), list));
     draw();
+    retitle(name, 3);
+  }
+
+  const fetchMusic = (name) => api(`/api/music?series=${encodeURIComponent(name)}&lang=${I18n.get()}`);
+
+  // titles in Japanese are translated by the server the first time, in a few seconds:
+  // the music is asked again then, and the titles shown change in place
+  function retitle(name, tries) {
+    if (!music.translating || !tries) return;
+    setTimeout(async () => {
+      if (series !== name) return;
+      music = await fetchMusic(name);
+      list = Music.ambiences(music, W().allShuffled);
+      if (current) Object.assign(current, Music.sameAmbience(list, current));
+      describe();
+      draw();
+      retitle(name, tries - 1);
+    }, 4000);
   }
 
   // the music of a series starts again where it was left
