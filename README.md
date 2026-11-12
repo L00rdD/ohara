@@ -138,6 +138,7 @@ You need Docker, a Prowlarr with at least one indexer that files manga under *Bo
 | `OHARA_DISCORD_WEBHOOK` | | A Discord channel's webhook URL: Ohara says there when tomes come in and when following a series finds new ones. Without it, nothing is said. |
 | `OHARA_URL` | | The address Ohara is reached at (`http://<host>:8585`), for the links of its Discord messages. |
 | `OHARA_DISCORD_LANG` | `fr` | `en` for Discord messages in English. |
+| `OHARA_DISCORD_NAME` | | The name its messages are signed with; without it, the name and picture given to the webhook in Discord. |
 | `OHARA_PORT` | `8585` | |
 
 Ohara fetches each `.torrent` itself and hands it to Transmission, so it works when

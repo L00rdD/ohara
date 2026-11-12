@@ -43,12 +43,19 @@ def tomes(numbers, lang="fr"):
 
 
 def card(title, description, cover=None, link=None):
+    """A message as a card; it is signed with the name and picture given to the webhook
+    in Discord (see sign to sign it otherwise)."""
     embed = {"title": title, "description": description, "color": COLOUR}
     if cover:
         embed["thumbnail"] = {"url": cover}
     if link:
         embed["url"] = link
-    return {"username": "Ohara", "embeds": [embed]}
+    return {"embeds": [embed]}
+
+
+def sign(payload, name):
+    """A message signed with another name than the webhook's."""
+    return {**payload, "username": name} if name else payload
 
 
 def arrived(series, numbers, cover=None, link=None, lang="fr"):

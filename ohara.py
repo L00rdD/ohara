@@ -58,6 +58,7 @@ PORT = int(os.environ.get("OHARA_PORT", "8585"))
 DISCORD_WEBHOOK = os.environ.get("OHARA_DISCORD_WEBHOOK", "")
 OHARA_URL = os.environ.get("OHARA_URL", "").rstrip("/")
 DISCORD_LANG = "en" if os.environ.get("OHARA_DISCORD_LANG") == "en" else "fr"
+DISCORD_NAME = os.environ.get("OHARA_DISCORD_NAME", "")  # else the webhook's own name
 
 IMAGE = re.compile(r"\.(jpe?g|png|webp|gif|avif)$", re.I)
 READABLE = (".cbz", ".zip")
@@ -713,7 +714,7 @@ def tell(message, series, what):
         return None
     cover = (load_state()["lookups"].get(norm(series)) or {}).get("cover")
     link = f"{OHARA_URL}/#{urllib.parse.quote(series)}" if OHARA_URL else None
-    return den_den.post(DISCORD_WEBHOOK, message(series, what, cover, link, DISCORD_LANG))
+    return den_den.post(DISCORD_WEBHOOK, den_den.sign(message(series, what, cover, link, DISCORD_LANG), DISCORD_NAME))
 
 
 def check_follows():

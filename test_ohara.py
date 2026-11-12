@@ -1359,7 +1359,10 @@ class DenDen(Library):
         self.assertEqual(d.tomes([1, 2, 4, 6, 7], "en"), "T1 to T2, T4 and T6 to T7")
         msg = d.arrived("Naruto", [12, 13, 14], "cover.jpg", "http://pi:8585/#Naruto")
         embed = msg["embeds"][0]
-        self.assertEqual((msg["username"], embed["title"], embed["url"], embed["thumbnail"]), ("Ohara", "3 tomes de Naruto arrivés", "http://pi:8585/#Naruto", {"url": "cover.jpg"}))
+        self.assertEqual((embed["title"], embed["url"], embed["thumbnail"]), ("3 tomes de Naruto arrivés", "http://pi:8585/#Naruto", {"url": "cover.jpg"}))
+        self.assertNotIn("username", msg)  # the webhook's own name and picture
+        self.assertEqual(d.sign(msg, "Professeur Clover")["username"], "Professeur Clover")
+        self.assertIs(d.sign(msg, ""), msg)
         self.assertEqual(embed["description"], "T12 à T14\n[Les lire dans Ohara](http://pi:8585/#Naruto)")
         self.assertEqual(d.arrived("Bleach", [1], lang="en")["embeds"][0], {"title": "1 volume of Bleach in", "description": "T1", "color": d.COLOUR})
         found = d.found("One Piece", [{"title": "One Piece T115", "range": [115, 115]}])["embeds"][0]
