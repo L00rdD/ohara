@@ -38,6 +38,11 @@ def cbz(path, names):
     return path
 
 
+def reading(state=None):
+    """Where the first reader is in each volume."""
+    return (state or ohara.load_state())["readers"]["1"]["progress"]
+
+
 class Library(unittest.TestCase):
     """A temporary library folder for each test."""
 
@@ -601,9 +606,9 @@ class Reading(Library):
 
     def test_marking_read_and_unread(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 0, 2)
-        before = ohara.load_state()["progress"]["Naruto/Naruto T02.cbz"]["at"]
+        before = reading()["Naruto/Naruto T02.cbz"]["at"]
         ohara.mark_read(["Naruto/Naruto T01.cbz", "Naruto/Naruto T02.cbz", "Naruto/Naruto T03.pdf"], True)
-        progress = ohara.load_state()["progress"]
+        progress = reading()
         self.assertEqual(progress["Naruto/Naruto T01.cbz"], {"page": 1, "pages": 2, "at": 0})
         self.assertEqual(progress["Naruto/Naruto T02.cbz"]["at"], before)
         self.assertEqual(progress["Naruto/Naruto T03.pdf"], {"page": 0, "pages": 1, "at": 0})
@@ -612,7 +617,7 @@ class Reading(Library):
         self.assertEqual([v["done"] for v in lib["series"][0]["volumes"]], [True, True, True, False])
         self.assertEqual(lib["last"]["id"], "Naruto/Naruto T02.cbz")
         ohara.mark_read(["Naruto/Naruto T01.cbz"], False)
-        self.assertNotIn("Naruto/Naruto T01.cbz", ohara.load_state()["progress"])
+        self.assertNotIn("Naruto/Naruto T01.cbz", reading())
         with self.assertRaises(KeyError):
             ohara.mark_read(["../x"], True)
 
@@ -738,15 +743,16 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "progress": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}, "dismissed": {}})
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}, "dismissed": {},
+                                             "readers": {"1": {"name": "", "progress": {}}}})
 
 
 class Http(Reading):
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, cookie=None):
         h = ohara.Handler.__new__(ohara.Handler)
         h.path, h.command, h.request_version, h.requestline = path, method, "HTTP/1.1", ""
         raw = body if isinstance(body, bytes) else json.dumps(body).encode() if body is not None else b""
-        h.headers = {"Content-Length": str(len(raw))}
+        h.headers = {"Content-Length": str(len(raw)), **({"Cookie": cookie} if cookie else {})}
         h.rfile, h.wfile = io.BytesIO(raw), io.BytesIO()
         h.client_address = ("10.0.0.2", 5000)
         h.server = mock.Mock()
@@ -800,7 +806,7 @@ class Http(Reading):
             code, head, _ = self.call("GET", "/api/status.json")
         self.assertIn("Access-Control-Allow-Origin: *", head)
         self.assertEqual(self.call("POST", "/api/progress", {"vol": "Naruto/Naruto T01.cbz", "page": 1, "count": 2})[0], 200)
-        self.assertEqual(ohara.load_state()["progress"]["Naruto/Naruto T01.cbz"]["page"], 1)
+        self.assertEqual(reading()["Naruto/Naruto T01.cbz"]["page"], 1)
 
     def test_search_grab_cancel(self):
         with mock.patch.object(ohara, "search", return_value=[{"token": "t"}]) as search:
@@ -846,7 +852,7 @@ class Http(Reading):
         self.assertIn("image/jpeg", head)
         with mock.patch.object(ohara, "mark_read", return_value={"ok": True}) as mark:
             self.assertEqual(self.call("POST", "/api/read", {"vols": ["a", 3], "read": 1})[0], 200)
-        mark.assert_called_once_with(["a"], True)
+        mark.assert_called_once_with(["a"], True, None)
         with mock.patch.object(ohara, "set_decor", return_value={"ok": True}) as decor:
             self.assertEqual(self.call("POST", "/api/decor", {"series": "Naruto", "decor": "none"})[0], 200)
         decor.assert_called_once_with("Naruto", "none")
@@ -893,6 +899,78 @@ class Http(Reading):
 
     def test_log_is_quiet(self):
         ohara.Handler.log_message(None, "x")
+
+
+class Readers(Library):
+    """Each reader their own reading, the volumes shared."""
+    call = Http.call
+
+    def setUp(self):
+        super().setUp()
+        for name, files in [("Naruto T01.cbz", ["1.png", "2.png"]), ("Naruto T02.cbz", ["1.png", "2.png"]), ("Naruto T04.cbz", ["1.png"])]:
+            cbz(self.root / "Naruto" / name, files)
+        (self.root / "Naruto" / "Naruto T03.pdf").write_bytes(b"%PDF")
+
+    def test_the_reading_kept_before_readers_is_the_first_ones(self):
+        ohara.save_state({"progress": {"Naruto/Naruto T01.cbz": {"page": 1, "pages": 2, "at": 5}}})
+        state = ohara.load_state()
+        self.assertNotIn("progress", state)
+        self.assertEqual(ohara.readers(state), {"readers": [{"id": "1", "name": ""}], "reader": "1"})
+        self.assertEqual(reading(state), {"Naruto/Naruto T01.cbz": {"page": 1, "pages": 2, "at": 5}})
+
+    def test_a_lone_reader_is_never_asked_who_reads(self):
+        self.assertEqual(self.call("POST", "/api/progress", {"vol": "Naruto/Naruto T01.cbz", "page": 1, "count": 2}, cookie="ohara-reader=gone")[0], 200)
+        self.assertEqual(reading()["Naruto/Naruto T01.cbz"]["page"], 1)
+
+    def test_two_readers_read_apart(self):
+        ohara.save_progress("Naruto/Naruto T01.cbz", 1, 2)
+        robin = ohara.add_reader("  Nico   Robin ")
+        self.assertEqual(robin["readers"][1]["name"], "Nico Robin")
+        rid = robin["reader"]
+        me, her = "ohara-reader=1", f"ohara-reader={rid}"
+        self.call("POST", "/api/progress", {"vol": "Naruto/Naruto T02.cbz", "page": 0, "count": 2}, cookie=her)
+        self.call("POST", "/api/read", {"vols": ["Naruto/Naruto T04.cbz"], "read": True}, cookie=her)
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            mine = json.loads(self.call("GET", "/api/library", cookie=me)[2])
+            hers = json.loads(self.call("GET", "/api/library", cookie=her)[2])
+            nobody = json.loads(self.call("GET", "/api/library")[2])
+        done = lambda lib: [v["done"] for v in lib["series"][0]["volumes"]]
+        self.assertEqual((done(mine), mine["last"]["id"], mine["reader"]), ([True, False, False, False], "Naruto/Naruto T01.cbz", "1"))
+        self.assertEqual((done(hers), hers["last"]["id"], hers["reader"]), ([False, False, False, True], "Naruto/Naruto T02.cbz", rid))
+        self.assertEqual((done(nobody), nobody["last"], nobody["reader"]), ([False] * 4, None, None))
+        self.assertEqual(json.loads(self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz", cookie=me)[2])["page"], 1)
+        self.assertEqual(json.loads(self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz", cookie=her)[2])["page"], 0)
+
+    def test_who_reads_is_asked_among_several(self):
+        ohara.add_reader("Robin")
+        for method, path, body in [("POST", "/api/progress", {"vol": "Naruto/Naruto T01.cbz", "page": 1, "count": 2}),
+                                   ("POST", "/api/read", {"vols": ["Naruto/Naruto T01.cbz"], "read": True}),
+                                   ("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz", None)]:
+            code, _, payload = self.call(method, path, body, cookie="ohara-reader=gone; other=1")
+            self.assertEqual((code, json.loads(payload)), (401, {"error": "reader"}))
+        self.assertEqual(reading(), {})
+        self.assertEqual(json.loads(self.call("GET", "/api/readers", cookie='ohara-reader="bad')[2])["reader"], None)
+
+    def test_renaming_and_forgetting_a_reader(self):
+        rid = json.loads(self.call("POST", "/api/readers", {"name": "Robin"})[2])["reader"]
+        self.call("POST", "/api/progress", {"vol": "Naruto/Naruto T01.cbz", "page": 1, "count": 2}, cookie=f"ohara-reader={rid}")
+        renamed = json.loads(self.call("POST", "/api/readers", {"id": "1", "name": "Luffy"}, cookie=f"ohara-reader={rid}")[2])
+        self.assertEqual(([r["name"] for r in renamed["readers"]], renamed["reader"]), (["Luffy", "Robin"], rid))
+        self.assertEqual(self.call("POST", "/api/readers", {"name": " "})[0], 502)
+        self.assertEqual(self.call("POST", "/api/readers", {"id": "nobody", "name": "X"})[0], 404)
+        ohara.rename_volume("Naruto/Naruto T01.cbz", "Naruto T01 bis.cbz")
+        self.assertEqual(list(ohara.load_state()["readers"][rid]["progress"]), ["Naruto/Naruto T01 bis.cbz"])
+        left = json.loads(self.call("POST", "/api/readers", {"id": "1", "forget": True})[2])
+        self.assertEqual(left, {"readers": [{"id": rid, "name": "Robin"}], "reader": rid})
+        self.assertEqual(self.call("POST", "/api/readers", {"id": rid, "forget": True})[0], 404)  # the last one stays
+
+    def test_franky_leaves_a_volume_anyone_is_reading(self):
+        rid = ohara.add_reader("Robin")["reader"]
+        ohara.save_progress("Naruto/Naruto T01.cbz", 0, 2, rid)
+        state = ohara.load_state()
+        self.assertGreater(ohara.last_opened(state, "Naruto/Naruto T01.cbz"), 0)
+        self.assertEqual(ohara.last_opened(state, "Naruto/Naruto T02.cbz"), 0)
+        self.assertEqual(ohara.franky_next(state).name, "Naruto T02.cbz")
 
 
 class Follow(Library):
@@ -1215,7 +1293,7 @@ class Franky(Library):
         self.assertEqual((progress["done"], progress["total"]), (2, 3))
         self.assertGreater(progress["saved"], 0)
         state = ohara.load_state()
-        state["progress"]["Manga/Manga T02.cbz"]["at"] = 0
+        reading(state)["Manga/Manga T02.cbz"]["at"] = 0
         ohara.save_state(state)
         with mock.patch.object(ohara.franky, "done", return_value=True):  # already rebuilt
             self.assertTrue(ohara.franky_one())
@@ -1560,12 +1638,12 @@ class Chopper(Library):
         new = ohara.rename_volume("Potter/Rowling [Tome 1].epub", "Potter T01.epub")
         self.assertEqual(new, "Potter/Potter T01 (2).epub")
         state = ohara.load_state()
-        self.assertEqual(state["progress"], {new: {"page": 3, "pages": 9, "at": 5}})
+        self.assertEqual(reading(state), {new: {"page": 3, "pages": 9, "at": 5}})
         self.assertEqual(list(state["spines"]), [new])
         self.assertEqual(state["series"]["Potter"]["decor"], "vol:" + new)
         ohara.delete_volume(new)
         self.assertFalse((self.root / new).exists())
-        self.assertEqual(ohara.load_state()["progress"], {})
+        self.assertEqual(reading(), {})
 
     def test_renaming_a_series_takes_everything_with_it(self):
         old = "Christopher Paolini Eragon"
@@ -1583,7 +1661,7 @@ class Chopper(Library):
         self.assertTrue((ohara.MUSIC / "Eragon" / "Album").exists())
         self.assertEqual(ohara.decor_file("Eragon").read_bytes(), b"jpg")
         state = ohara.load_state()
-        self.assertEqual(state["progress"], {"Eragon/Eragon T01.cbz": {"page": 1}, "Naruto/Naruto T01.cbz": {"page": 2}})
+        self.assertEqual(reading(state), {"Eragon/Eragon T01.cbz": {"page": 1}, "Naruto/Naruto T01.cbz": {"page": 2}})
         self.assertEqual(state["franky"], {"Eragon/Eragon T01.cbz": [2, 1]})
         self.assertEqual(state["series"], {"Eragon": {"follow": True, "decor": "vol:Eragon/Eragon T01.cbz"}})
         self.assertEqual((list(state["music"]), list(state["chapters"])), (["Eragon"], ["Eragon"]))

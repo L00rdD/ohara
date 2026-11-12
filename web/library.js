@@ -475,6 +475,7 @@ const Ohara = (() => {
     answered = true;
     keep();
     draw();
+    Readers.show(lib);
     Sheet.refresh(lib.series);
     Doctor.refresh();
     clearTimeout(timer);

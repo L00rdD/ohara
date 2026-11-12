@@ -21,6 +21,7 @@
         <svg viewBox="0 0 30 38" aria-hidden="true"><path d="M9 6h12M15 1v5" stroke="#c9a46a" stroke-width="2" fill="none"/><path d="M8 8h14l2 4v18l-2 4H8l-2-4V12z" fill="rgba(30,18,8,.6)" stroke="#c9a46a" stroke-width="1.6"/><clipPath id="lantern-glass"><path d="M8.6 9.2h12.8l1.6 3.2v17.2l-1.6 3.2H8.6l-1.6-3.2V12.4z"/></clipPath><rect id="lantern-fill" clip-path="url(#lantern-glass)" x="5" y="38" width="20" height="40" fill="#f6b95a"/><path id="lantern-flame" d="M15 15c2 3 2 6 0 8-2-2-2-5 0-8z" fill="#fff4d6" opacity=".15"/></svg>
         <span class="count" id="lantern-count"></span>
       </button>
+      <button class="round reader-switch" id="open-readers" type="button" hidden></button>
       <button class="round flag" id="flag" type="button"></button>
       <button class="round doctor quiet" id="open-ailments" type="button">🩺<span class="count" id="ailments-count"></span></button>
       <button class="round" id="open-contents" type="button">≡</button>
@@ -58,6 +59,7 @@
   </section>
 
   <section class="sheet small" id="settings" hidden></section>
+  <section class="readers" id="readers" hidden></section>
   <section class="sheet small" id="ailments" hidden></section>
 
   <script src="/i18n.js"></script>
@@ -68,6 +70,7 @@
   <script src="/search.js"></script>
   <script src="/chopper.js"></script>
   <script src="/sheet.js"></script>
+  <script src="/readers.js"></script>
   <script src="/settings.js"></script>
   <script src="/library.js"></script>
 </body>

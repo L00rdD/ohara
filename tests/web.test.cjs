@@ -349,3 +349,27 @@ test("the library kept in the browser", () => {
   assert.equal(Ohara.keptLibrary("{not json"), null);
   assert.equal(Ohara.keptLibrary('{"series": 3}'), null);
 });
+
+test("a reader: their name, the first one's until renamed, and their badge", () => {
+  assert.equal(fr(() => Ohara.readerName({ id: "1", name: "" })), "Premier lecteur");
+  assert.equal(en(() => Ohara.readerName({ id: "1", name: "" })), "First reader");
+  assert.equal(Ohara.readerName({ id: "a1", name: "Robin" }), "Robin");
+  const look = Ohara.readerLook({ id: "a1", name: "élise" });
+  assert.equal(look.initial, "É");
+  assert.match(look.colour, /^hsl\(\d+, 45%, 42%\)$/);
+  assert.equal(Ohara.readerLook({ id: "a1", name: "x" }).colour, look.colour); // the same colour each time
+  assert.notEqual(Ohara.readerLook({ id: "b2", name: "x" }).colour, look.colour);
+  assert.equal(fr(() => Ohara.readerLook({ id: "1", name: "" })).initial, "P");
+});
+
+test("who reads: asked among several, shown in the header once there are two", () => {
+  const two = [{ id: "1", name: "" }, { id: "a1", name: "Robin" }];
+  assert.deepEqual(Ohara.whoReads({ readers: two, reader: "a1" }), { me: two[1], asked: false });
+  assert.deepEqual(Ohara.whoReads({ readers: two, reader: null }), { me: null, asked: true });
+  assert.deepEqual(Ohara.whoReads({ readers: [two[0]], reader: "1" }), { me: null, asked: false });
+  assert.deepEqual(Ohara.whoReads({ series: [] }), { me: null, asked: false }); // a library kept from before the readers
+});
+
+test("the reader's cookie is kept for years, for the whole site", () => {
+  assert.equal(Ohara.readerCookie("a b"), "ohara-reader=a%20b; max-age=315360000; path=/; samesite=lax");
+});

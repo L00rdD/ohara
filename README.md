@@ -50,6 +50,14 @@ Tree of Knowledge.
   back to unread), or open its series' sheet; touching it again opens it. The card
   says which chapters the volume holds, read from the English Wikipedia's lists of
   chapters for the series that have one.
+- **Who reads.** Several people can share one Ohara: the volumes, the music and the
+  settings are everyone's, but each reader keeps their own place in every volume, their
+  volumes read, their ribbons and their lectern. As soon as there are two readers, a
+  browser that does not know who it is asks *Qui lit ?* (a name to touch, or a new
+  one); the answer is kept in that browser for years, and the badge in the header
+  switches reader. The settings add, rename and forget readers (touched twice). No
+  passwords: it is a household's library, not a safe. A library read by one person
+  never asks; the reading kept before readers existed is the first reader's.
 - **The back of the shelves.** A series' bays wear its AniList banner by default; its
   sheet lets you put its AniList cover there instead, bare wood, a volume's cover (from
   that volume's ⋯ menu), or an image of its own: sent from the phone or the computer,
@@ -155,7 +163,8 @@ manga/
 ├── .ost/           the music of each series, by album
 ├── .incoming/      downloads under way
 └── .ohara/         state.json (downloads, reading progress, followed series,
-                    AniList answers) and the covers made from the volumes
+                    AniList answers, each reader's progress) and the covers made
+                    from the volumes
 ```
 
 Volumes you already have can go straight into a series folder: Ohara reads the volume
@@ -164,10 +173,12 @@ number in the file name (`T05`, `Tome 5`, `v05`, `Vol. 5`).
 ## API
 
 `GET /api/status.json` (CORS open) gives the number of series and volumes, the new
-volumes, the downloads under way and the volume being read, for a dashboard card.
+volumes, the downloads under way and the volume being read (by the only reader, or the
+one its `ohara-reader` cookie names), for a dashboard card.
 The page itself uses `/api/search`, `/api/library`, `/api/grab`, `/api/complete`,
 `/api/follow`, `/api/pages`, `/api/page`, `/api/cover`, `/api/file`,
-`/api/progress` and `/api/cancel`.
+`/api/progress`, `/api/read`, `/api/readers` and `/api/cancel`; those about reading
+answer 401 when, among several readers, the `ohara-reader` cookie names none.
 
 ## Development
 

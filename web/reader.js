@@ -196,7 +196,9 @@ const Reader = (() => {
   async function openVolume(id) {
     vid = id;
     forget();
-    info = await (await fetch(`/api/pages?vol=${encodeURIComponent(vid)}&w=${width}`)).json();
+    const r = await fetch(`/api/pages?vol=${encodeURIComponent(vid)}&w=${width}`);
+    if (r.status === 401) return location.replace("/"); // who reads is asked in the library
+    info = await r.json();
     document.title = `${info.series} · ${info.label}`;
     $("title").textContent = document.title;
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);

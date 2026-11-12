@@ -1,4 +1,4 @@
-// The settings: the interface's language, the style of spines, the lectern's ribbon,
+// The settings: the readers, the interface's language, the style of spines, the lectern's ribbon,
 // Brook, Franky, and where
 // to search (Prowlarr's indexers). library.js gives what they change on the page.
 const Settings = (() => {
@@ -18,7 +18,9 @@ const Settings = (() => {
       langs.append(b);
     }
     const list = el("div", "", "…");
-    sheet.replaceChildren(button("✕", "round close", () => ctx.closeSheet(sheet)), el("h2", "", W().settings), el("h3", "", W().language), langs,
+    sheet.replaceChildren(button("✕", "round close", () => ctx.closeSheet(sheet)), el("h2", "", W().settings),
+      el("h3", "", W().readers), el("p", "note", W().readersHint), Readers.settingsBox(),
+      el("h3", "", W().language), langs,
       el("h3", "", W().spinesTitle), el("p", "note", W().spinesHint), spineChoices(),
       el("h3", "", W().lecternTitle), settingSwitch("ribbon", W().ribbonSetting, (st) => ctx.setRibbon(st.ribbon)),
       el("h3", "", W().music), el("p", "note", W().brookHint), brookSwitch(),

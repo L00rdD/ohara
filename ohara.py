@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+import http.cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -77,8 +79,10 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "progress", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters", "dismissed"):
+    for key in ("downloads", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters", "dismissed"):
         state.setdefault(key, {})
+    if "readers" not in state:  # a state from before the readers: its reading is the first one's
+        state["readers"] = {FIRST_READER: {"name": "", "progress": state.pop("progress", {})}}
     return state
 
 
@@ -120,6 +124,91 @@ def update_state(change):
 
 def series_entry(state, name):
     return state["series"].setdefault(name, {"follow": False, "query": name})
+
+
+# ---------- readers: the volumes are shared, where each one is in them is not ----------
+
+FIRST_READER = "1"  # the reader given the reading kept before there were readers
+READER_NAME = 30  # characters at most in a reader's name
+
+
+class NoReader(Exception):
+    """A request about reading that does not say who reads, among several readers."""
+
+
+def reader_of(state, rid):
+    """Who reads: the reader asked for, else the only one there is (a library read by
+    one person never asks), else None."""
+    known = state["readers"]
+    if rid in known:
+        return rid
+    return next(iter(known)) if len(known) == 1 else None
+
+
+def progress_of(state, rid):
+    """Where a reader is in each volume ({} when who reads cannot be told)."""
+    rid = reader_of(state, rid)
+    return state["readers"][rid].setdefault("progress", {}) if rid else {}
+
+
+def reading_of(state, rid):
+    """A reader's progress, to change it: NoReader when who reads cannot be told."""
+    if not reader_of(state, rid):
+        raise NoReader()
+    return progress_of(state, rid)
+
+
+def readers(state, rid=None):
+    """The readers, in the order they came, and the one asking."""
+    listed = [{"id": k, "name": r.get("name", "")} for k, r in state["readers"].items()]
+    return {"readers": listed, "reader": reader_of(state, rid)}
+
+
+def reader_name(name):
+    name = " ".join(str(name).split())[:READER_NAME]
+    if not name:
+        raise ValueError("a reader needs a name")
+    return name
+
+
+def add_reader(name):
+    """A new reader, starting with nothing read."""
+    name, rid = reader_name(name), secrets.token_hex(4)
+
+    def change(state):
+        state["readers"][rid] = {"name": name, "progress": {}}
+        return readers(state, rid)
+    return update_state(change)
+
+
+def rename_reader(rid, name, asking=None):
+    name = reader_name(name)
+
+    def change(state):
+        state["readers"][rid]["name"] = name
+        return readers(state, asking)
+    return update_state(change)
+
+
+def forget_reader(rid, asking=None):
+    """Forgets a reader and their reading; the last one stays."""
+    def change(state):
+        if rid not in state["readers"] or len(state["readers"]) < 2:
+            raise KeyError(rid)
+        del state["readers"][rid]
+        return readers(state, asking)
+    return update_state(change)
+
+
+def move_reading(state, rename):
+    """Every reader's progress, its volumes renamed by rename(id) -> new id or None."""
+    for r in state["readers"].values():
+        r["progress"] = move_keys(r.get("progress", {}), rename)
+
+
+def last_opened(state, vid):
+    """When anyone last opened a volume."""
+    return max((r.get("progress", {}).get(vid, {}).get("at", 0) for r in state["readers"].values()), default=0)
 
 
 # ---------- AniList: cover, colour, status and number of volumes of a series ----------
@@ -889,11 +978,11 @@ def library_volumes():
 
 
 def franky_next(state):
-    """The next volume Franky has not seen, leaving those being read."""
+    """The next volume Franky has not seen, leaving those being read, by anyone."""
     now = time.time()
     for path in library_volumes():
         vid = volume_id(path)
-        if vid not in state["franky"] and now - state["progress"].get(vid, {}).get("at", 0) > FRANKY_BUSY:
+        if vid not in state["franky"] and now - last_opened(state, vid) > FRANKY_BUSY:
             return path
     return None
 
@@ -1235,8 +1324,8 @@ def library_names():
     return [d.name for d in MANGA.iterdir() if d.is_dir() and not d.name.startswith(".") and volumes(d)]
 
 
-def series_info(d, state):
-    vols = [volume_info(v, state["progress"], state["spines"]) for v in volumes(d)]
+def series_info(d, state, rid=None):
+    vols = [volume_info(v, progress_of(state, rid), state["spines"]) for v in volumes(d)]
     known = state["chapters"].get(d.name, {}).get("volumes", {})
     for v in vols:
         whole = v["number"] and v["number"] == int(v["number"])
@@ -1260,9 +1349,9 @@ def series_info(d, state):
     }
 
 
-def series_list(state):
+def series_list(state, rid=None):
     dirs = sorted((MANGA / n for n in library_names()), key=lambda d: natural(d.name))
-    return [series_info(d, state) for d in dirs]
+    return [series_info(d, state, rid) for d in dirs]
 
 
 def volume_info(path, progress, spines=None):
@@ -1284,14 +1373,15 @@ def volume_info(path, progress, spines=None):
     }
 
 
-def library():
+def library(rid=None):
+    """The library as a reader sees it: the series, where they are in them, the downloads."""
     state = load_state()
-    series = series_list(state)
+    series = series_list(state, rid)
     live = {t["hashString"]: t for t in safe_torrents(list(state["downloads"]))}
     downloads = [download_info(h, d, live.get(h)) for h, d in state["downloads"].items()]
     for d in downloads:
         d["cover"] = (state["lookups"].get(norm(d["series"])) or {}).get("cover")
-    return {"series": series, "downloads": downloads, "last": last_read(series)}
+    return {"series": series, "downloads": downloads, "last": last_read(series), **readers(state, rid)}
 
 
 TORRENTS_WAIT = 4  # seconds the library waits for Transmission before saying what it knew
@@ -1400,7 +1490,8 @@ def rename_volume(vid, name):
     moved = lambda k: new if k == vid else None
 
     def change(state):
-        for key in ("progress", "spines", "franky"):
+        move_reading(state, moved)
+        for key in ("spines", "franky"):
             state[key] = move_keys(state[key], moved)
         for entry in state["series"].values():
             if entry.get("decor") == "vol:" + vid:
@@ -1428,7 +1519,8 @@ def rename_series(old, new):
     moved_name = lambda k: new if k == old else None
 
     def change(state):
-        for key in ("progress", "spines", "franky"):
+        move_reading(state, moved_vol)
+        for key in ("spines", "franky"):
             state[key] = move_keys(state[key], moved_vol)
         for key in ("series", "music", "moods", "chapters"):
             state[key] = move_keys(state[key], moved_name)
@@ -1449,7 +1541,9 @@ def delete_volume(vid):
     volume_path(vid).unlink()
 
     def change(state):
-        for key in ("progress", "spines", "franky"):
+        for r in state["readers"].values():
+            r.get("progress", {}).pop(vid, None)
+        for key in ("spines", "franky"):
             state[key].pop(vid, None)
     update_state(change)
 
@@ -1623,13 +1717,16 @@ def cover(path):
     return out.read_bytes()
 
 
-def volume_pages(vid):
+def volume_pages(vid, rid=None):
     path = volume_path(vid)
     series = path.parent
     vols = volumes(series)
     i = vols.index(path)
     nxt = next((v for v in vols[i + 1:] if v.suffix.lower() in READABLE), None)
-    saved = load_state()["progress"].get(vid, {})
+    state = load_state()
+    if not reader_of(state, rid):
+        raise NoReader()
+    saved = progress_of(state, rid).get(vid, {})
     return {
         "id": vid,
         "series": series.name,
@@ -1640,15 +1737,15 @@ def volume_pages(vid):
     }
 
 
-def save_progress(vid, page, count):
+def save_progress(vid, page, count, rid=None):
     volume_path(vid)
 
     def note(state):
-        state["progress"][vid] = {"page": int(page), "pages": int(count), "at": time.time()}
+        reading_of(state, rid)[vid] = {"page": int(page), "pages": int(count), "at": time.time()}
     update_state(note)
 
 
-def mark_read(vids, read):
+def mark_read(vids, read, rid=None):
     """Marks volumes as read (at their last page) or back to unread. The time of
     reading is kept, so marking a volume does not make it the one on the lectern."""
     paths = {vid: volume_path(vid) for vid in vids}
@@ -1657,20 +1754,21 @@ def mark_read(vids, read):
         print(f"reading: back to unread: {len(vids)} volume(s), {', '.join(sorted(vids))[:300]}", flush=True)
 
     def change(state):
+        progress = reading_of(state, rid)
         for vid, path in paths.items():
             if not read:
-                state["progress"].pop(vid, None)
+                progress.pop(vid, None)
                 continue
             count = len(pages(path)) if path.suffix.lower() in READABLE else 1
-            at = state["progress"].get(vid, {}).get("at", 0)
-            state["progress"][vid] = {"page": max(0, count - 1), "pages": count, "at": at}
+            at = progress.get(vid, {}).get("at", 0)
+            progress[vid] = {"page": max(0, count - 1), "pages": count, "at": at}
     update_state(change)
     return {"ok": True}
 
 
-def status():
+def status(rid=None):
     """The home page's card."""
-    lib = library()
+    lib = library(rid)
     vols = sum(len(s["volumes"]) for s in lib["series"])
     new = sum(s["new"] for s in lib["series"])
     return {"series": len(lib["series"]), "volumes": vols, "new": new, "downloads": lib["downloads"], "last": lib["last"]}
@@ -1718,6 +1816,15 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}")
 
+    def reader(self):
+        """The reader this browser was given (the ohara-reader cookie), or None."""
+        jar = http.cookies.SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except http.cookies.CookieError:
+            return None
+        return jar["ohara-reader"].value if "ohara-reader" in jar else None
+
     def do_GET(self):
         self.route(GET_ROUTES)
 
@@ -1734,6 +1841,8 @@ class Handler(BaseHTTPRequestHandler):
         except KeyError as e:
             # a body may be left unread: the connection is not kept
             self.send(404, {"error": str(e)}, extra={"Connection": "close"})
+        except NoReader:  # the page asks who reads
+            self.send(401, {"error": "reader"}, extra={"Connection": "close"})
         except Exception as e:
             self.send(502, {"error": str(e)}, extra={"Connection": "close"})
 
@@ -1764,7 +1873,7 @@ def get_page(h):
 def get_pages(h):
     """A volume to read; with the reader's width, its pages are made ahead."""
     q = h.query()
-    info = volume_pages(q["vol"])
+    info = volume_pages(q["vol"], h.reader())
     w = page_width(q.get("w"))
     if w and info["count"]:
         warm(volume_path(q["vol"]), w, min(info["page"], info["count"] - 1))
@@ -1833,7 +1942,7 @@ def post_dismiss(h):
 
 def post_progress(h):
     b = h.body()
-    save_progress(b["vol"], b["page"], b["count"])
+    save_progress(b["vol"], b["page"], b["count"], h.reader())
     h.send(200, {"ok": True})
 
 
@@ -1911,7 +2020,18 @@ def post_mood(h):
 
 def post_read(h):
     b = h.body()
-    h.send(200, mark_read([v for v in b.get("vols", []) if isinstance(v, str)], bool(b.get("read"))))
+    h.send(200, mark_read([v for v in b.get("vols", []) if isinstance(v, str)], bool(b.get("read")), h.reader()))
+
+
+def post_readers(h):
+    """A reader added ({name}), renamed ({id, name}) or forgotten ({id, forget}); the
+    readers then, and the one asking."""
+    b = h.body()
+    if b.get("forget"):
+        return h.send(200, forget_reader(str(b["id"]), h.reader()))
+    if b.get("id"):
+        return h.send(200, rename_reader(str(b["id"]), b.get("name", ""), h.reader()))
+    h.send(200, add_reader(b.get("name", "")))
 
 
 def drop(torrent_hash):
@@ -1938,7 +2058,8 @@ def post_another(h):
 
 GET_ROUTES = {
     "/api/search": get_search,
-    "/api/library": lambda h: h.send(200, library()),
+    "/api/library": lambda h: h.send(200, library(h.reader())),
+    "/api/readers": lambda h: h.send(200, readers(load_state(), h.reader())),
     "/api/pages": get_pages,
     "/api/page": get_page,
     "/api/file": get_file,
@@ -1952,9 +2073,9 @@ GET_ROUTES = {
     "/api/track": get_track,
     "/api/art": get_art,
     "/api/settings": lambda h: h.send(200, settings_page()),
-    "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
+    "/api/status.json": lambda h: h.send(200, status(h.reader()), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another, "/api/readers": post_readers}
 
 
 def main():

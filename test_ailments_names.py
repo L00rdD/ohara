@@ -210,7 +210,7 @@ class Cures(unittest.TestCase):
         self.assertEqual(an.rename_files(ohara, "One Piece", names), {"renamed": 2})
         self.assertEqual(sorted(p.name for p in (self.root / "One Piece").iterdir()),
                          ["One Piece T105.cbz", "One Piece T106.cbz", "One Piece T107.cbz", "One Piece Tome 107.cbz"])
-        self.assertEqual(ohara.load_state()["progress"], {"One Piece/One Piece T105.cbz": {"page": 4, "pages": 9}})
+        self.assertEqual(ohara.load_state()["readers"]["1"]["progress"], {"One Piece/One Piece T105.cbz": {"page": 4, "pages": 9}})
         self.assertEqual(an.rename_files(ohara, "One Piece", names), {"renamed": 0})
         self.assertEqual(an.rename_files(ohara, "One Piece", [["One Piece/One Piece T107.cbz", "One Piece T107.cbz"]]), {"renamed": 0})
 
@@ -221,7 +221,7 @@ class Cures(unittest.TestCase):
         ohara.save_state({"progress": {old + "/1 - Eragon.epub": {"page": 2, "pages": 300}}, "series": {old: {"follow": True}}})
         self.assertEqual(an.rename_folder(ohara, old, "Eragon"), {"renamed": "Eragon"})
         state = ohara.load_state()
-        self.assertEqual(state["progress"], {"Eragon/1 - Eragon.epub": {"page": 2, "pages": 300}})
+        self.assertEqual(state["readers"]["1"]["progress"], {"Eragon/1 - Eragon.epub": {"page": 2, "pages": 300}})
         self.assertEqual(state["series"], {"Eragon": {"follow": True}})
         self.assertEqual(an.rename_folder(ohara, old, "Eragon"), {"renamed": None})  # twice
         self.assertEqual(an.rename_folder(ohara, "Eragon", "Naruto"), {"renamed": None})  # taken
@@ -233,7 +233,7 @@ class Cures(unittest.TestCase):
         ohara.save_state({"progress": {"Eragon/Eragon II.epub": {"page": 1}}})
         found = an.volumes_without_number(snap(series("Eragon", ["Eragon I.epub", "Eragon II.epub"])))
         self.assertEqual(an.chopper.apply(found, "unnumbered:Eragon", 0, ohara), {"renamed": 2})
-        self.assertEqual(ohara.load_state()["progress"], {"Eragon/Eragon T02.epub": {"page": 1}})
+        self.assertEqual(ohara.load_state()["readers"]["1"]["progress"], {"Eragon/Eragon T02.epub": {"page": 1}})
 
 
 if __name__ == "__main__":

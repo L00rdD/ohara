@@ -248,6 +248,28 @@ const Words = (() => {
   }
 
   // the library kept in the browser, or null when there is none or it cannot be read
+  // ---- readers: each one their own reading ----
+  // a reader's name, the first one (from before there were readers) unnamed until renamed
+  const readerName = (r) => (r && r.name) || W().firstReader;
+
+  // the round badge of a reader: their initial on a colour of their own
+  function readerLook(r) {
+    let h = 0;
+    for (const c of r.id) h = (h * 31 + c.charCodeAt(0)) % 360;
+    return { initial: [...readerName(r)][0].toUpperCase(), colour: `hsl(${h}, 45%, 42%)` };
+  }
+
+  // who reads, from the library's answer: me (shown in the header once there are
+  // several readers), asked when the server could not tell
+  function whoReads(lib) {
+    const readers = lib.readers || [];
+    const me = readers.length > 1 ? readers.find((r) => r.id === lib.reader) || null : null;
+    return { me, asked: Boolean(readers.length) && !lib.reader };
+  }
+
+  // the cookie that tells the server who reads in this browser, kept for years
+  const readerCookie = (id) => `ohara-reader=${encodeURIComponent(id)}; max-age=${10 * 365 * 86400}; path=/; samesite=lax`;
+
   function keptLibrary(text) {
     try {
       const kept = JSON.parse(text);
@@ -310,7 +332,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn, keptLibrary };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn, keptLibrary, readerName, readerLook, readerCookie, whoReads };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

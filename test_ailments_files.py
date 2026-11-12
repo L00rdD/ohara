@@ -188,7 +188,7 @@ class Cures(unittest.TestCase):
         done = self.treat(found, "formats:Eragon|.pdf+.epub", "Keep the PDFs (delete the EPUBs)")
         self.assertEqual(sorted(done["deleted"]), ["Eragon/1 - Eragon.epub", "Eragon/2 - Eragon.epub"])
         self.assertEqual(sorted(p.name for p in (self.root / "Eragon").iterdir()), ["1-Eragon.pdf", "2-Eragon.pdf"])
-        self.assertEqual(ohara.load_state()["progress"], {})
+        self.assertEqual(ohara.load_state()["readers"]["1"]["progress"], {})
         self.treat(found, "editions:JJK", "Keep the larger file (often the better scan)")
         self.assertEqual([p.name for p in (self.root / "JJK").iterdir()], ["JJK T11 (PapriKa+).cbz"])
         self.assertNotIn("editions:JJK", self.examine())
