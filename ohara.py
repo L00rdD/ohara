@@ -34,8 +34,8 @@ import chopper  # noqa: E402
 import den_den  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
-from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
-                   speed, tome_range, volume_label, volume_number)
+from names import (LANG_ORDER, chapter_range, guess_series, is_chapter, language, natural, norm,  # noqa: E402
+                   safe_name, speed, tome_range, volume_label, volume_number, webtoon_pack)
 
 MANGA = Path(os.environ.get("OHARA_MANGA", "/manga"))
 STATE_DIR = MANGA / ".ohara"
@@ -66,7 +66,8 @@ IMAGE = re.compile(r"\.(jpe?g|png|webp|gif|avif)$", re.I)
 READABLE = (".cbz", ".zip")
 KEPT = (".cbz", ".zip", ".pdf", ".epub")
 ARCHIVES = (".cbr", ".rar", ".cb7", ".7z")
-VIDEO = re.compile(r"(?i)\b(1080p|720p|2160p|x26[45]|hevc|web-?dl|webrip|bluray|s\d\d(e\d\d)?)\b|\.(mkv|mp4|avi)\b")
+VIDEO = re.compile(r"(?i)\b(1080p|720p|2160p|x26[45]|hevc|web-?dl|webrip|bluray)\b|\.(mkv|mp4|avi)\b")
+EPISODE = re.compile(r"(?i)\bs\d\d(e\d\d)?\b")  # a show's season and episode, or a webtoon's season
 BOOKISH = re.compile(r"(?i)\b(cbz|cbr|cb7|tomes?|t\d{1,3}|vol(ume)?s?\.?\s*\d+|v\d{1,3}|scans?)\b")
 
 lock = threading.Lock()
@@ -214,7 +215,7 @@ def last_opened(state, vid):
 # ---------- AniList: cover, colour, status and number of volumes of a series ----------
 
 ANILIST_QUERY = """query($s: String) { Page(perPage: 6) { media(search: $s, type: MANGA, sort: SEARCH_MATCH) {
-  id title { romaji english native } synonyms coverImage { extraLarge large color } bannerImage volumes status startDate { year } } } }"""
+  id title { romaji english native } synonyms coverImage { extraLarge large color } bannerImage volumes chapters status startDate { year } } } }"""
 STATUS = {"RELEASING": "En cours", "FINISHED": "Terminé", "HIATUS": "En pause", "CANCELLED": "Arrêté", "NOT_YET_RELEASED": "À paraître"}
 
 
@@ -234,6 +235,7 @@ def anilist_fetch(name):
         "names": [n for n in [m["title"]["romaji"], m["title"]["english"], *(m.get("synonyms") or [])] if n],
         "status": STATUS.get(m["status"], ""),
         "volumes": m["volumes"],
+        "chapters": m.get("chapters"),
         "year": (m.get("startDate") or {}).get("year"),
     }
 
@@ -348,9 +350,10 @@ def is_manga(result):
     CBZ or tomes; never videos, music, games or adult releases."""
     title = result.get("title", "")
     cats = [c.get("id", 0) for c in result.get("categories", [])]
-    if VIDEO.search(title) or any(2000 <= c < 7000 for c in cats):
+    books = any(7000 <= c < 8000 for c in cats)
+    if VIDEO.search(title) or (EPISODE.search(title) and not books) or any(2000 <= c < 7000 for c in cats):
         return False
-    return any(7000 <= c < 8000 for c in cats) or bool(BOOKISH.search(title))
+    return books or bool(BOOKISH.search(title))
 
 
 def release(result):
@@ -363,6 +366,7 @@ def release(result):
         "series": guess_series(result["title"]),
         "lang": language(result["title"], result.get("indexer", "")),
         "range": tome_range(result["title"]),
+        "chapters": chapter_range(result["title"]),
         "size": result.get("size", 0),
         "seeders": seeders,
         "speed": speed(seeders),
@@ -511,11 +515,14 @@ def grab(token, series, follow=False, query=""):
     added = rpc("torrent-add", args)
     t = added.get("torrent-added") or added.get("torrent-duplicate")
     meta = lookup(series)
+    webtoon = webtoon_pack(r["title"]) or is_webtoon(series, load_state()["series"].get(series, {}))
 
     def note(state):
         state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": r["range"], "at": time.time()}
         entry = series_entry(state, series)
         entry["anilist"] = meta.get("id") or entry.get("anilist")
+        if webtoon:
+            take_pack(entry, r)
         if follow:
             entry.update(follow=True, query=query or entry.get("query") or series)
     update_state(note)
@@ -737,6 +744,81 @@ def prune(picks, wanted):
     return kept
 
 
+# ---------- webtoons: followed by chapters, in English ----------
+
+def is_webtoon(series, entry):
+    """Whether a series is followed by chapters: as the switch on its sheet says, else
+    when its files are chapters."""
+    if "webtoon" in entry:
+        return bool(entry["webtoon"])
+    d = MANGA / series
+    return d.is_dir() and any(is_chapter(p.name) for p in volumes(d))
+
+
+def set_webtoon(series, on):
+    def change(state):
+        series_entry(state, series)["webtoon"] = bool(on)
+    update_state(change)
+    if on and load_state()["series"][series].get("follow"):
+        complete_later(series)
+
+
+def take_pack(entry, r):
+    """Remembers a webtoon pack taken, not to take it again; and, for one that does not
+    say its chapters, its size: only a bigger one (the pack uploaded again with more
+    chapters) is worth taking after it. Turns the series to a webtoon, unless the switch
+    said otherwise."""
+    entry.setdefault("webtoon", True)
+    entry["taken"] = (entry.get("taken", []) + [r["token"]])[-50:]
+    if not r.get("chapters"):
+        entry["taken_size"] = max(entry.get("taken_size", 0), r["size"])
+
+
+def chapters_of(r):
+    lo, hi = r.get("chapters") or (0, -1)
+    return set(range(lo, hi + 1))
+
+
+def webtoon_plan(series, releases, state, total=None):
+    """The packs to download so that a webtoon has every chapter up to the last one out
+    (AniList's count, or the most a pack says): those saying their chapters, the one
+    bringing the most missing first, then the most seeders; else, when none says them,
+    the biggest pack bigger than any taken before. Nothing while one is on its way: its
+    chapters are not known before it comes. English packs count, not Japanese ones.
+    Returns (releases, chapters still nowhere to be found)."""
+    if any(d["series"] == series and d.get("kind", "volumes") == "volumes" for d in state["downloads"].values()):
+        return [], []
+    entry = state.get("series", {}).get(series, {})
+    usable = usable_packs(releases, entry)
+    last = max([total or 0] + [max(chapters_of(r), default=0) for r in usable])
+    need = set(range(1, last + 1)) - {int(n) for n in owned_numbers(MANGA / series)}
+    picks = chapter_picks(usable, need)
+    if picks or (total and not need):
+        return picks, sorted(need)
+    blind = [r for r in usable if not r.get("chapters") and r["size"] > entry.get("taken_size", 0)]
+    return sorted(blind, key=lambda r: (-r["size"], -r["seeders"]))[:1], []
+
+
+def usable_packs(releases, entry):
+    """The packs that can come (shared by someone, not in Japanese) and were neither
+    taken nor given up on before."""
+    passed = set(entry.get("taken", [])) | set(entry.get("skipped", []))
+    return [r for r in releases if r["lang"] != "JP" and r["seeders"] > 0 and not {r["token"], r["title"]} & passed]
+
+
+def chapter_picks(usable, need):
+    """The packs saying their chapters that bring the missing ones, the one bringing
+    the most first, then the most seeders; need is left with what none brings."""
+    picks = []
+    while True:
+        helpful = [r for r in usable if chapters_of(r) & need and r not in picks]
+        if not helpful:
+            return picks
+        best = max(helpful, key=lambda r: (len(chapters_of(r) & need), r["seeders"]))
+        picks.append(best)
+        need -= chapters_of(best)
+
+
 COLOUR = re.compile(r"(?i)\b(en )?couleurs?\b|\bcolou?r(ed)?\b|カラー")
 
 
@@ -759,8 +841,11 @@ def complete(series):
     releases = find_releases(entry.get("query") or series)
     facts = lookups(sorted({r["series"] for r in releases}))
     mine = [r for r in releases if same_series(r, series, entry, facts)]
-    total = (state["lookups"].get(norm(series)) or {}).get("volumes")
-    picks, nowhere = plan(series, mine, state, total)
+    facts_of = state["lookups"].get(norm(series)) or {}
+    if is_webtoon(series, entry):
+        picks, nowhere = webtoon_plan(series, mine, state, facts_of.get("chapters"))
+    else:
+        picks, nowhere = plan(series, mine, state, facts_of.get("volumes"))
     for r in picks:
         print(f"complete: {series} ← {r['title']}", flush=True)
         grab(r["token"], series)
@@ -1324,16 +1409,22 @@ def library_names():
     return [d.name for d in MANGA.iterdir() if d.is_dir() and not d.name.startswith(".") and volumes(d)]
 
 
+def wiki_chapters(vols, known):
+    """Gives each tome the chapters Wikipedia lists for it; a webtoon's chapter is not
+    the tome of its number."""
+    for v in vols:
+        whole = v["number"] and v["number"] == int(v["number"]) and not v["chapter"]
+        v["chapters"] = known.get(str(int(v["number"]))) if whole else None
+
+
 def series_info(d, state, rid=None):
     vols = [volume_info(v, progress_of(state, rid), state["spines"]) for v in volumes(d)]
-    known = state["chapters"].get(d.name, {}).get("volumes", {})
-    for v in vols:
-        whole = v["number"] and v["number"] == int(v["number"])
-        v["chapters"] = known.get(str(int(v["number"]))) if whole else None
+    wiki_chapters(vols, state["chapters"].get(d.name, {}).get("volumes", {}))
     entry = state["series"].get(d.name, {})
     meta = state["lookups"].get(norm(d.name)) or {}
     numbers = {int(v["number"]) for v in vols if v["number"]}
-    last = max([meta.get("volumes") or 0] + list(numbers))
+    webtoon = entry.get("webtoon", any(v["chapter"] for v in vols))
+    last = max([meta.get("chapters" if webtoon else "volumes") or 0] + list(numbers))
     coming = coming_tomes(d.name, state)
     return {
         "name": d.name,
@@ -1341,6 +1432,7 @@ def series_info(d, state, rid=None):
         "read": sum(v["done"] for v in vols),
         "new": sum(v["new"] for v in vols),
         "follow": entry.get("follow", False),
+        "webtoon": bool(webtoon),
         "decor": entry.get("decor", "banner"),
         "kept": decor_kept(d.name),
         "meta": meta,
@@ -1362,6 +1454,7 @@ def volume_info(path, progress, spines=None):
         "id": vid,
         "label": volume_label(path.name),
         "number": volume_number(path.name),
+        "chapter": is_chapter(path.name),  # a webtoon's chapter, not a tome
         "file": path.name,
         "readable": readable,
         "page": p.get("page", 0),
@@ -1731,6 +1824,8 @@ def volume_pages(vid, rid=None):
         "id": vid,
         "series": series.name,
         "label": volume_label(path.name),
+        "number": volume_number(path.name),
+        "chapter": is_chapter(path.name),
         "count": len(pages(path)),
         "page": saved.get("page", 0),
         "next": volume_id(nxt) if nxt else None,
@@ -1906,6 +2001,12 @@ def post_follow(h):
     h.send(200, {"ok": True})
 
 
+def post_webtoon(h):
+    b = h.body()
+    set_webtoon(b["series"], b["webtoon"])
+    h.send(200, {"ok": True})
+
+
 def post_decor(h):
     b = h.body()
     h.send(200, set_decor(b["series"], str(b.get("decor", ""))))
@@ -2075,7 +2176,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(h.reader()), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another, "/api/readers": post_readers}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/webtoon": post_webtoon, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another, "/api/readers": post_readers}
 
 
 def main():

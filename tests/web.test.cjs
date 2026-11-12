@@ -196,6 +196,9 @@ test("a volume's name in the language chosen", () => {
   assert.equal(fr(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Tome 5");
   assert.equal(en(() => Ohara.volumeName({ number: 5, label: "Tome 5" })), "Volume 5");
   assert.equal(en(() => Ohara.volumeName({ number: null, label: "Artbook" })), "Artbook");
+  assert.equal(fr(() => Ohara.volumeName({ number: 12, label: "Chapitre 12", chapter: true })), "Chapitre 12");
+  assert.equal(en(() => Ohara.volumeName({ number: 12, label: "Chapitre 12", chapter: true })), "Chapter 12");
+  assert.equal(en(() => Ohara.readLabel({ number: 12, label: "Chapitre 12", chapter: true, pages: 0 })), "Read chapter 12");
 });
 
 test("what a bay's plaque says", () => {

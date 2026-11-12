@@ -79,6 +79,13 @@ Tree of Knowledge.
   packs, slow torrents cost more, colour editions count as another series), then
   drops the packs a bigger one made useless. A followed series is kept complete, at
   once and every 12 hours.
+- **Webtoons.** A webtoon comes by chapters (`Ashtarte c001.cbz`), hardly ever in
+  French: its chapters are named as chapters, and a switch on its sheet (*Webtoon*,
+  turned on by itself when its files are chapters or a webtoon's pack is taken)
+  follows it by chapters, in English too, up to AniList's count of chapters: the
+  packs saying the most missing chapters first; for packs that say no chapters
+  (*S1-2*), only one bigger than the last taken, as when a pack is uploaded again
+  with more chapters.
 - **Filing.** When a download is done, the volumes go to `<library>/<Series>/` and the
   torrent is removed (no seeding). Volumes already there are left out of a pack.
   `.zip` becomes `.cbz`, `.cbr`/`.cb7` are converted with 7-Zip, a release of plain

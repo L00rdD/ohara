@@ -4,7 +4,7 @@
 // from words.js, the rotunda's geometry from rotunda.js.
 const Ohara = (() => {
   const W = () => I18n.words();
-  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, contents, spineDraw, downloadName, lecternVolume, selectionActions, decorUrl, readCounts } = Words;
+  const { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel, spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, volumeWord, contents, spineDraw, downloadName, lecternVolume, selectionActions, decorUrl, readCounts } = Words;
 
   // ---- the page ----
   const R = Rotunda;
@@ -308,7 +308,7 @@ const Ohara = (() => {
   // the volume being read, open on the lectern at the two pages you left it at
   function drawOpenBook(box, v) {
     const cap = el("span", "caption");
-    cap.append(el("b", "", v.series), document.createTextNode(", " + W().volume(v.number || v.label)), el("small", "", readingState(v)));
+    cap.append(el("b", "", v.series), document.createTextNode(", " + volumeWord(v)), el("small", "", readingState(v)));
     const book = el("a", "book");
     book.href = openUrl(v);
     book.title = readLabel(v);

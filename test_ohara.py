@@ -74,6 +74,11 @@ class Names(unittest.TestCase):
             "One.Piece.Tome.105.FRENCH.CBZ": "One Piece",
             "Boruto - Naruto Next Generations Tomes 1 à 16 [FR] [CBZ]": "Boruto - Naruto Next Generations",
             "[Team]": "[Team]",
+            "[lord_ne] Return of the Blossoming Blade (Return of the Mount Hua Sect) ch001-158 (Complete) [WEBTOON]": "Return of the Blossoming Blade",
+            "[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing": "Ashtarte",
+            "[Dalte] Father, I Don't Want This Marriage (2021) (Digital) (Tappytoon) | Ongoing": "Father, I Don't Want This Marriage",
+            "Solo Leveling Season 2 c045-060": "Solo Leveling",
+            "Steins;Gate 0": "Steins;Gate 0",
         }
         for title, series in cases.items():
             self.assertEqual(ohara.guess_series(title), series, title)
@@ -88,6 +93,36 @@ class Names(unittest.TestCase):
         self.assertEqual(ohara.volume_label("Frieren - Tome 12.5.cbz"), "Tome 12.5")
         self.assertEqual(ohara.volume_label("Volume 3.pdf"), "Tome 3")
         self.assertEqual(ohara.volume_label("Artbook.cbz"), "Artbook")
+
+    def test_a_webtoons_chapters(self):
+        cases = {
+            "Ashtarte c001 (2022) (Digital) (Dalte).cbz": (1, "Chapitre 1", True),
+            "Return of the Blossoming Blade - #012 - Episode 12.cbz": (12, "Chapitre 12", True),
+            "My Life as an Internet Novel c000 (2019) (Digital) (Dalte).cbz": (0, "Chapitre 0", True),
+            "Chainsaw Man ch. 12.5.cbz": (12.5, "Chapitre 12.5", True),
+            "Mob Psycho 100 c045.cbz": (45, "Chapitre 45", True),
+            "Naruto v01 c001.cbz": (1, "Tome 1", False),  # a tome that says its first chapter
+            "Mob Psycho 100 - 045.cbz": (45, "Tome 45", False),
+            "Epic 3.cbz": (3, "Tome 3", False),
+        }
+        for name, (number, label, chapter) in cases.items():
+            self.assertEqual((ohara.volume_number(name), ohara.volume_label(name), ohara.is_chapter(name)), (number, label, chapter), name)
+        for title in ("[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing", "Return of the Blossoming Blade ch001-158"):
+            self.assertIsNone(ohara.tome_range(title), title)  # neither seasons nor chapters are tomes
+
+    def test_a_webtoons_packs(self):
+        cases = {
+            "[lord_ne] Return of the Blossoming Blade (Return of the Mount Hua Sect) ch001-158 (Complete) [WEBTOON]": ((1, 158), True),
+            "[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing": (None, True),
+            "[Dalte] Father, I Don't Want This Marriage (2021) (Digital) (Tappytoon)": (None, True),
+            "Spy x Family c045-060 (Digital)": ((45, 60), True),  # chapters in English
+            "One Piece Chapitre 1100 VF": ((1100, 1100), False),  # a French chapter: a manga's
+            "One Piece v105 c1050-1060": ((1050, 1060), False),  # chapters inside a tome
+            "Naruto - T01 à T72 [CBZ] Fr": (None, False),
+            "Season of Love v01 (Digital)": (None, False),
+        }
+        for title, (chapters, webtoon) in cases.items():
+            self.assertEqual((ohara.chapter_range(title), ohara.webtoon_pack(title)), (chapters, webtoon), title)
 
     def test_language(self):
         self.assertEqual(ohara.language("Frieren [CBZ/FR]"), "FR")
@@ -110,6 +145,8 @@ class Names(unittest.TestCase):
         self.assertTrue(ohara.is_manga({"title": "Something", "categories": cat(7030)}))
         self.assertTrue(ohara.is_manga({"title": "Frieren CBZ", "categories": []}))
         self.assertFalse(ohara.is_manga({"title": "Frieren S01E04 1080p", "categories": cat(5070)}))
+        self.assertFalse(ohara.is_manga({"title": "Frieren S01E04 CBZ", "categories": []}))
+        self.assertTrue(ohara.is_manga({"title": "[Dalte] Ashtarte S01 (2022) (Digital)", "categories": cat(7030)}))  # a webtoon's season
         self.assertFalse(ohara.is_manga({"title": "Naruto Tome 1", "categories": cat(2000)}))
         self.assertFalse(ohara.is_manga({"title": "Naruto", "categories": []}))
         self.assertFalse(ohara.is_manga({"title": "Kyonatix - Frieren.zip", "categories": cat(8000)}))
@@ -258,7 +295,7 @@ class AniList(Library):
     def test_fetch(self):
         with mock.patch.object(ohara, "http_json", return_value=self.ANSWER) as call:
             meta = ohara.anilist_fetch("frieren")
-        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "banner": None, "names": ["Sousou no Frieren"], "status": "En cours", "volumes": None, "year": 2020})
+        self.assertEqual(meta, {"id": 5, "title": "Sousou no Frieren", "cover": "http://c/l.jpg", "color": "#e4ae5d", "banner": None, "names": ["Sousou no Frieren"], "status": "En cours", "volumes": None, "chapters": None, "year": 2020})
         self.assertEqual(call.call_args.kwargs["headers"]["User-Agent"], "Ohara/1.0")
         with mock.patch.object(ohara, "http_json", return_value={"data": {"Page": {"media": []}}}):
             self.assertEqual(ohara.anilist_fetch("zzz"), {})
@@ -412,6 +449,18 @@ class Transmission(Library):
         ohara.set_follow("Frieren", False)
         self.assertFalse(ohara.load_state()["series"]["Frieren"]["follow"])
 
+    def test_a_webtoons_pack_makes_its_series_a_webtoon(self):
+        ohara.found_releases["t3"] = {"title": "[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon)", "series": "Ashtarte", "range": None,
+                                      "chapters": None, "size": 2e9, "token": "t3", "_url": "magnet:?a"}
+        with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H3"}}), mock.patch.object(ohara, "lookup", return_value={}):
+            ohara.grab("t3", "")
+        entry = ohara.load_state()["series"]["Ashtarte"]
+        self.assertEqual((entry["webtoon"], entry["taken"], entry["taken_size"]), (True, ["t3"], 2e9))
+        ohara.save_state({"series": {"Ashtarte": {"webtoon": False}}})  # the switch said no: a pack does not say otherwise
+        with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H4"}}), mock.patch.object(ohara, "lookup", return_value={}):
+            ohara.grab("t3", "")
+        self.assertFalse(ohara.load_state()["series"]["Ashtarte"]["webtoon"])
+
     def test_grab_unknown_token(self):
         with self.assertRaises(KeyError):
             ohara.grab("nope", "x")
@@ -455,6 +504,14 @@ class Import(Library):
             cbz(src / f"Frieren - Tome {n:02d}.cbz", ["1.png"])
         self.assertEqual(ohara.import_download(src, "Frieren"), 1)
         self.assertEqual(sorted(p.name for p in (self.root / "Frieren").iterdir()), ["Frieren - Tome 02.cbz", "Frieren T01.cbz"])
+
+    def test_a_webtoons_chapters_come_in_one_by_one(self):
+        cbz(self.root / "Ashtarte" / "Ashtarte c001 (2022) (Digital) (Dalte).cbz", ["1.png"])
+        src = self.root / ".incoming" / "f8" / "Ashtarte (2022) (Digital) (Dalte)"
+        for n in (0, 1, 2, 3):
+            cbz(src / f"Ashtarte c{n:03d} (2022) (Digital) (Dalte).cbz", ["1.png"])
+        self.assertEqual(ohara.import_download(src.parent, "Ashtarte"), 3)
+        self.assertEqual(sorted(ohara.owned_numbers(self.root / "Ashtarte")), [0, 1, 2, 3])
 
     def test_cbr_is_unpacked_with_7zip(self):
         src = self.root / ".incoming" / "f2"
@@ -659,7 +716,7 @@ class Reading(Library):
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
-        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "count": 2, "page": 1, "next": "Naruto/Naruto T04.cbz"})
+        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "count": 2, "page": 1, "next": "Naruto/Naruto T04.cbz"})
         self.assertIsNone(ohara.volume_pages("Naruto/Naruto T04.cbz")["next"])
 
     def test_pages_the_size_of_a_screen(self):
@@ -1062,6 +1119,66 @@ class Follow(Library):
         grab.assert_called_once_with("Frieren T01 - T02 FR", "Frieren")
         self.assertEqual(done, {"sent": [{"title": "Frieren T01 - T02 FR", "range": (1, 2)}], "nowhere": [3]})
 
+    def chapters(self, title, seeders=5, lang="EN", size=1e9):
+        return dict(self.rel(title, seeders, lang, size), chapters=ohara.chapter_range(title))
+
+    def test_a_webtoon_takes_the_english_pack_with_the_most_missing_chapters(self):
+        for n in (1, 2, 3):
+            cbz(self.root / "Blade" / f"Blade c{n:03d}.cbz", ["1.png"])
+        releases = [
+            self.chapters("Blade ch001-030 [WEBTOON]", seeders=50),
+            self.chapters("Blade ch001-158 (Complete) [WEBTOON]", seeders=4),
+            self.chapters("Blade ch159-160 [WEBTOON]", seeders=0),  # nobody shares it
+            self.chapters("Blade ch161 [WEBTOON]", lang="JP"),
+            self.chapters("Blade ch100-170 [WEBTOON]", seeders=2),
+        ]
+        picks, nowhere = ohara.webtoon_plan("Blade", releases, {"downloads": {}}, total=175)
+        self.assertEqual([r["title"] for r in picks], ["Blade ch001-158 (Complete) [WEBTOON]", "Blade ch100-170 [WEBTOON]"])
+        self.assertEqual(nowhere, list(range(171, 176)))
+        picks, nowhere = ohara.webtoon_plan("Blade", releases, {"downloads": {"H": {"series": "Blade"}}})
+        self.assertEqual((picks, nowhere), ([], []))  # one on its way: its chapters are not known yet
+
+    def test_a_webtoons_packs_without_chapters_bigger_than_the_last(self):
+        packs = [self.chapters("[Dalte] Ashtarte S1 (2022) (Digital) (Tappytoon)", size=1e9),
+                 self.chapters("[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing", size=2e9, seeders=1),
+                 self.chapters("[Other] Ashtarte (2022) (Digital)", size=2e9, seeders=9)]
+        picks, _ = ohara.webtoon_plan("Ashtarte", packs, {"downloads": {}})
+        self.assertEqual([r["title"] for r in picks], ["[Other] Ashtarte (2022) (Digital)"])  # as big, more seeders
+        state = {"downloads": {}, "series": {"Ashtarte": {"taken": [picks[0]["token"]], "taken_size": 2e9}}}
+        self.assertEqual(ohara.webtoon_plan("Ashtarte", packs, state), ([], []))  # nothing bigger since
+        bigger = self.chapters("[Dalte] Ashtarte S1-3 (2022) (Digital) (Tappytoon) | Ongoing", size=3e9, seeders=1)
+        self.assertEqual(ohara.webtoon_plan("Ashtarte", packs + [bigger], state)[0], [bigger])
+        cbz(self.root / "Ashtarte" / "Ashtarte c001.cbz", ["1.png"])
+        self.assertEqual(ohara.webtoon_plan("Ashtarte", packs, {"downloads": {}}, total=1), ([], []))  # every chapter here
+
+    def test_complete_follows_a_webtoon_by_chapters_and_a_manga_by_tomes(self):
+        cbz(self.root / "Blade" / "Blade c001.cbz", ["1.png"])
+        ohara.save_state({"series": {"Blade": {"query": "blade"}, "Frieren": {"query": "frieren"}},
+                          "lookups": {"blade": {"chapters": 3}, "frieren": {"volumes": 2}}})
+        found = [self.chapters("Blade ch001-003 [WEBTOON]"), self.rel("Blade T01 FR"), self.rel("Frieren T01 - T02 FR"), self.chapters("Frieren ch001-020")]
+        with mock.patch.object(ohara, "find_releases", return_value=found), mock.patch.object(ohara, "lookups", return_value={}), \
+                mock.patch.object(ohara, "grab") as grab:
+            self.assertEqual(ohara.complete("Blade"), {"sent": [{"title": "Blade ch001-003 [WEBTOON]", "range": None}], "nowhere": []})
+            self.assertEqual(ohara.complete("Frieren")["sent"], [{"title": "Frieren T01 - T02 FR", "range": (1, 2)}])
+        self.assertEqual([c.args for c in grab.call_args_list], [("Blade ch001-003 [WEBTOON]", "Blade"), ("Frieren T01 - T02 FR", "Frieren")])
+
+    def test_the_webtoon_switch(self):
+        cbz(self.root / "Blade" / "Blade c001.cbz", ["1.png"])
+        cbz(self.root / "Frieren" / "Frieren T01.cbz", ["1.png"])
+        ohara.save_state({"lookups": {"blade": {"volumes": 1, "chapters": 3}}})
+        info = ohara.series_info(self.root / "Blade", ohara.load_state())
+        self.assertEqual((info["webtoon"], info["missing"]), (True, [2, 3]))  # chapters, from its files
+        self.assertFalse(ohara.series_info(self.root / "Frieren", ohara.load_state())["webtoon"])
+        with mock.patch.object(ohara, "complete_later") as later:
+            ohara.set_webtoon("Blade", False)
+            ohara.set_follow("Frieren", True)
+            ohara.set_webtoon("Frieren", True)
+        self.assertEqual([c.args for c in later.call_args_list], [("Frieren",), ("Frieren",)])  # followed: completed at once
+        state = ohara.load_state()
+        self.assertFalse(ohara.is_webtoon("Blade", state["series"]["Blade"]))
+        self.assertTrue(ohara.is_webtoon("Frieren", state["series"]["Frieren"]))
+        self.assertFalse(ohara.is_webtoon("Nowhere", {}))
+
     def test_complete_later_runs_in_the_background(self):
         with mock.patch.object(ohara, "complete", side_effect=OSError("prowlarr down")) as complete:
             ohara.complete_later("Frieren")
@@ -1413,6 +1530,15 @@ class Chapters(Library):
         with mock.patch.object(ohara.chapters, "chapters", side_effect=OSError("away")):
             ohara.chapters_pass()  # said, and tried again next pass
         self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
+
+
+    def test_a_webtoons_chapters_are_not_the_tomes_wikipedia_lists(self):
+        cbz(self.root / "Ashtarte" / "Ashtarte c001 (2022) (Digital) (Dalte).cbz", ["1.png"])
+        ohara.save_state({"chapters": {"Ashtarte": {"volumes": {"1": [1, 7]}, "at": 0}}})
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            [ashtarte] = ohara.library()["series"]
+        [v] = ashtarte["volumes"]
+        self.assertEqual((v["number"], v["label"], v["chapter"], v["chapters"]), (1, "Chapitre 1", True, None))
 
 
 class StuckTransmission(Library):
