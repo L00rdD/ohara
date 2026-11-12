@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import brook  # noqa: E402
 import chapters  # noqa: E402
 import chopper  # noqa: E402
+import den_den  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
 from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
@@ -52,6 +53,11 @@ FOLLOW_EVERY = float(os.environ.get("OHARA_FOLLOW_HOURS", "12")) * 3600
 NEW_FOR = 7 * 86400  # a volume stays "new" a week, until it is opened
 WEB = Path(__file__).with_name("web")
 PORT = int(os.environ.get("OHARA_PORT", "8585"))
+# Discord (see den_den.py): a channel's webhook, the address Ohara is reached at for the
+# links of its messages, and their language
+DISCORD_WEBHOOK = os.environ.get("OHARA_DISCORD_WEBHOOK", "")
+OHARA_URL = os.environ.get("OHARA_URL", "").rstrip("/")
+DISCORD_LANG = "en" if os.environ.get("OHARA_DISCORD_LANG") == "en" else "fr"
 
 IMAGE = re.compile(r"\.(jpe?g|png|webp|gif|avif)$", re.I)
 READABLE = (".cbz", ".zip")
@@ -566,12 +572,17 @@ def check_downloads():
 
 
 def file_download(torrent_hash, d):
-    """Files one finished download, then drops its torrent and its folder."""
+    """Files one finished download, then drops its torrent and its folder; the tomes
+    that came in are said on Discord."""
     source = INCOMING / d["folder"]
     if d.get("kind") == "ost":
         import_music(source, d["series"])
     else:
+        before = owned_numbers(MANGA / d["series"])
         import_download(source, d["series"])
+        came = sorted(owned_numbers(MANGA / d["series"]) - before)
+        if came:
+            tell(den_den.arrived, d["series"], came)
     rpc("torrent-remove", {"ids": [torrent_hash], "delete-local-data": True})
     shutil.rmtree(source, ignore_errors=True)
     update_state(lambda s: s["downloads"].pop(torrent_hash, None))
@@ -689,16 +700,30 @@ def complete_later(series):
 
 def safe_complete(series):
     try:
-        complete(series)
+        return complete(series)
     except Exception as e:
         print(f"complete {series}:", e, flush=True)
+        return None
+
+
+def tell(message, series, what):
+    """Says something of a series on Discord (see den_den.py), with its cover and a
+    link to it, when a webhook is set."""
+    if not DISCORD_WEBHOOK:
+        return None
+    cover = (load_state()["lookups"].get(norm(series)) or {}).get("cover")
+    link = f"{OHARA_URL}/#{urllib.parse.quote(series)}" if OHARA_URL else None
+    return den_den.post(DISCORD_WEBHOOK, message(series, what, cover, link, DISCORD_LANG))
 
 
 def check_follows():
-    """Keeps every followed series complete: missing tomes and new ones."""
+    """Keeps every followed series complete: missing tomes and new ones, said on
+    Discord when some are sent for."""
     for series, entry in load_state()["series"].items():
         if entry.get("follow"):
-            safe_complete(series)
+            sent = (safe_complete(series) or {}).get("sent")
+            if sent:
+                tell(den_den.found, series, sent)
 
     def stamp(s):
         s["followed_at"] = time.time()

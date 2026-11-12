@@ -1349,6 +1349,65 @@ class StuckTransmission(Library):
         self.assertEqual(ohara.torrents([]), [])
 
 
+class DenDen(Library):
+    """What Ohara says on Discord."""
+
+    def test_the_words_of_a_message(self):
+        d = ohara.den_den
+        self.assertEqual(d.tomes([9, 3, 7, 8]), "T3 et T7 à T9")
+        self.assertEqual(d.tomes([12.5]), "T12.5")
+        self.assertEqual(d.tomes([1, 2, 4, 6, 7], "en"), "T1 to T2, T4 and T6 to T7")
+        msg = d.arrived("Naruto", [12, 13, 14], "cover.jpg", "http://pi:8585/#Naruto")
+        embed = msg["embeds"][0]
+        self.assertEqual((msg["username"], embed["title"], embed["url"], embed["thumbnail"]), ("Ohara", "3 tomes de Naruto arrivés", "http://pi:8585/#Naruto", {"url": "cover.jpg"}))
+        self.assertEqual(embed["description"], "T12 à T14\n[Les lire dans Ohara](http://pi:8585/#Naruto)")
+        self.assertEqual(d.arrived("Bleach", [1], lang="en")["embeds"][0], {"title": "1 volume of Bleach in", "description": "T1", "color": d.COLOUR})
+        found = d.found("One Piece", [{"title": "One Piece T115", "range": [115, 115]}])["embeds"][0]
+        self.assertEqual((found["title"], found["description"]), ("Du nouveau pour One Piece", "En route : T115."))
+        self.assertEqual(d.found("X", [{"title": "X Intégrale", "range": None}], lang="en")["embeds"][0]["description"], "On its way: X Intégrale.")
+
+    def test_a_message_goes_out_and_is_tried_again(self):
+        d = ohara.den_den
+        with mock.patch.object(d.urllib.request, "urlopen") as urlopen:
+            d.send("https://discord/hook", {"content": "x"})
+        req = urlopen.call_args.args[0]
+        self.assertEqual((req.full_url, req.get_method(), json.loads(req.data)), ("https://discord/hook", "POST", {"content": "x"}))
+        self.assertIn("Ohara", req.get_header("User-agent"))  # Discord turns away Python's own
+        with mock.patch.object(d, "send", side_effect=[OSError("away"), OSError("away"), None]) as send, mock.patch.object(d.time, "sleep") as sleep:
+            d.post("hook", {}, start=False).run()
+        self.assertEqual((send.call_count, sleep.call_count), (3, 2))
+        with mock.patch.object(d, "send", side_effect=OSError("away")) as send, mock.patch.object(d.time, "sleep"):
+            d.post("hook", {}, tries=2, start=False).run()  # given up after two
+        self.assertEqual(send.call_count, 2)
+        with mock.patch.object(d.threading.Thread, "start") as start:
+            d.post("hook", {})
+        start.assert_called_once()
+
+    def test_ohara_tells_the_tomes_come_in_and_those_following_finds(self):
+        told = []
+        with mock.patch.object(ohara, "DISCORD_WEBHOOK", ""):
+            self.assertIsNone(ohara.tell(ohara.den_den.arrived, "Naruto", [1]))
+        with mock.patch.object(ohara, "DISCORD_WEBHOOK", "hook"), mock.patch.object(ohara, "OHARA_URL", "http://pi:8585"), \
+                mock.patch.object(ohara.den_den, "post", side_effect=lambda hook, payload: told.append((hook, payload))):
+            ohara.save_state({"lookups": {"naruto": {"cover": "c.jpg"}}})
+            ohara.tell(ohara.den_den.arrived, "Naruto", [1])
+            self.assertEqual(told[-1][1]["embeds"][0]["url"], "http://pi:8585/#Naruto")
+            self.assertEqual(told[-1][1]["embeds"][0]["thumbnail"], {"url": "c.jpg"})
+            cbz(self.root / "Naruto" / "Naruto T01.cbz", ["1.png"])
+            cbz(self.root / ".incoming" / "f" / "Naruto T01.cbz", ["1.png"])  # had already
+            cbz(self.root / ".incoming" / "f" / "Naruto T02.cbz", ["1.png"])
+            with mock.patch.object(ohara, "rpc"):
+                ohara.file_download("H", {"series": "Naruto", "folder": "f"})
+            self.assertEqual(told[-1][1]["embeds"][0]["title"], "1 tome de Naruto arrivé")
+            self.assertEqual(told[-1][1]["embeds"][0]["description"].split("\n")[0], "T2")
+            ohara.save_state({"series": {"Naruto": {"follow": True}, "Bleach": {"follow": True}, "Dune": {"follow": False}}})
+            answers = {"Naruto": {"sent": [{"title": "Naruto T03", "range": [3, 3]}], "nowhere": []}, "Bleach": {"sent": [], "nowhere": [9]}}
+            told.clear()
+            with mock.patch.object(ohara, "complete", side_effect=lambda s: answers[s]):
+                ohara.check_follows()
+            self.assertEqual([p["embeds"][0]["title"] for _, p in told], ["Du nouveau pour Naruto"])
+
+
 class Backups(Library):
     def test_a_copy_of_the_state_a_day_seven_days_kept(self):
         ohara.backup_state("2026-11-01")  # no state yet: nothing

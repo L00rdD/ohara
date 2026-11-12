@@ -104,6 +104,9 @@ Tree of Knowledge.
   comes can be given up for another release of the same tomes, from the lantern
   (*Une autre version*) or from Chopper; Ohara remembers the one given up on, and one
   cancelled, and does not take it again.
+- **On Discord.** With a channel's webhook in `OHARA_DISCORD_WEBHOOK`, the Den Den
+  Mushi says there when tomes come in (« 3 tomes de Naruto arrivés : T12 à T14 », with
+  the cover and a link) and when following a series sends for new ones.
 - **French or English.** The flag in the header switches the interface; the choice
   is kept in the browser.
 - **Settings.** Where to search: Prowlarr's indexers, each with its state (failing,
@@ -132,6 +135,9 @@ You need Docker, a Prowlarr with at least one indexer that files manga under *Bo
 | `OHARA_TRANSMISSION_DIR` | `/data/manga/.incoming` | The library's `.incoming` folder as Transmission sees it. |
 | `OHARA_MANGA` | `/manga` | The library inside the container. |
 | `OHARA_FOLLOW_HOURS` | `12` | How often followed series are completed. |
+| `OHARA_DISCORD_WEBHOOK` | | A Discord channel's webhook URL: Ohara says there when tomes come in and when following a series finds new ones. Without it, nothing is said. |
+| `OHARA_URL` | | The address Ohara is reached at (`http://<host>:8585`), for the links of its Discord messages. |
+| `OHARA_DISCORD_LANG` | `fr` | `en` for Discord messages in English. |
 | `OHARA_PORT` | `8585` | |
 
 Ohara fetches each `.torrent` itself and hands it to Transmission, so it works when
@@ -169,7 +175,7 @@ and JavaScript for the pages: `i18n.js` (the words in French and English),
 rotunda's geometry and what each bay holds), `library.js` (the page),
 `robin.py` (what a spine needs, read from a cover), `franky.py` (a volume rebuilt
 lighter), `chapters.py` (the chapters of each volume, from Wikipedia), `chopper.py` and
-`ailments_*.py` (what ails the library, and the remedies), `brook.py` (which soundtrack,
+`ailments_*.py` (what ails the library, and the remedies), `den_den.py` (Discord), `brook.py` (which soundtrack,
 and the titles of its tracks), `ui.js`, `search.js` and `settings.js` (the drawer of
 the search and the settings), `music.js` and `player.js` (the reader's music), `sheet.js` (a series' sheet),
 `reader.js` (the reader).
