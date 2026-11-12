@@ -118,7 +118,9 @@ const Settings = (() => {
       said.textContent = st.discord ? W().discordLinked : W().discordNone;
       off.hidden = !st.discord;
     };
+    let tried = false; // what was just tried is said, not covered by a late answer
     async function link(url) {
+      tried = true;
       said.className = "note";
       said.textContent = url ? W().discordTrying : "";
       try {
@@ -133,7 +135,7 @@ const Settings = (() => {
       e.preventDefault();
       link(input.value);
     };
-    api("/api/settings").then(show, () => {});
+    api("/api/settings").then((st) => tried || show(st), () => {});
     box.append(form, said, off);
     return box;
   }
