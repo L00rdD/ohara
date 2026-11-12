@@ -1695,6 +1695,19 @@ class Brook(Library):
             ohara.save_state({"music": {"Frieren": {"state": "none", "skipped": ["Frieren Original Soundtrack [FLAC]"]}}})
             self.assertEqual(ohara.find_soundtracks("Frieren"), [])
 
+    def test_soundtracks_of_a_colour_edition_each_title_once(self):
+        results = [
+            {"guid": "a", "title": "One Piece OST [MP3]", "categories": [{"id": 3000}], "seeders": 4, "size": 3e8, "indexer": "Nyaa.si"},
+            {"guid": "b", "title": "One Piece OST [MP3]", "categories": [{"id": 3000}], "seeders": 40, "size": 3e8, "indexer": "Knaben"},
+        ]
+        with mock.patch.object(ohara, "lookup", return_value={}) as lookup, \
+                mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "audio_indexer_ids", return_value=[1]), \
+                mock.patch.object(ohara, "http_json", return_value=results) as http:
+            found = ohara.find_soundtracks("One Piece en couleurs")
+        self.assertEqual([(r["title"], r["seeders"]) for r in found], [("One Piece OST [MP3]", 40)])
+        lookup.assert_called_once_with("One Piece")
+        self.assertIn("query=One+Piece+OST", http.call_args_list[0][0][0])
+
     def test_audio_indexers(self):
         found = [{"id": 1, "enable": True, "capabilities": {"categories": [{"id": 3000}]}},
                  {"id": 2, "enable": True, "capabilities": {"categories": [{"id": 7000}]}},
@@ -1794,6 +1807,27 @@ class Brook(Library):
         self.assertEqual(ohara.music_status("Frieren"), {"state": "error"})
         ohara.set_music("Frieren", state="notfound")
         self.assertIsNone(ohara.brook_pass())
+
+    def test_a_colour_edition_plays_the_originals_music(self):
+        folder = self.root / ".ost" / "One Piece" / "OST 1"
+        folder.mkdir(parents=True)
+        (folder / "01 - a.mp3").write_bytes(mp3("We Are!"))
+        ohara.set_mood("One Piece en couleurs", "Combat", ["One Piece/OST 1/01 - a.mp3"])
+        self.assertEqual(ohara.music("One Piece en couleurs"), ohara.music("One Piece"))
+        self.assertEqual(ohara.music("One Piece")["moods"], [{"name": "Combat", "tracks": ["One Piece/OST 1/01 - a.mp3"]}])
+        with mock.patch.object(ohara, "find_soundtracks", return_value=[]) as find:
+            self.assertEqual(ohara.grab_music("One Piece en couleurs"), {"state": "notfound"})
+        find.assert_called_once_with("One Piece")
+        self.assertEqual(ohara.music_status("One Piece"), {"state": "notfound"})
+
+    def test_brook_looks_once_for_an_original_and_its_colour_edition(self):
+        for name in ("One Piece en couleurs", "One Piece"):
+            cbz(self.root / name / "T01.cbz", ["1.png"])
+        ohara.set_settings({"brook": True})
+        with mock.patch.object(ohara, "grab_music", return_value={"state": "downloading"}) as grab:
+            ohara.brook_pass()
+        grab.assert_called_once_with("One Piece")
+        self.assertEqual(set(ohara.load_state()["music"]), {"One Piece"})
 
     def test_when_brook_looks_again(self):
         self.assertTrue(ohara.music_due(None, 0))

@@ -950,6 +950,12 @@ MUSIC_RETRY = 7 * 86400  # a series without a soundtrack is looked for again a w
 MUSIC_ERROR_RETRY = 3600  # after a failure (Prowlarr or Transmission away), an hour later
 
 
+def tune(series):
+    """The series whose music a series plays: a colour edition plays the original's,
+    looked for, downloaded and filed once, its ambiences shared."""
+    return uncoloured(series) or series
+
+
 def music_due(status, now):
     """Whether Brook should look for a series' music now."""
     if not status:
@@ -967,8 +973,10 @@ def audio_indexer_ids(key):
 
 
 def find_soundtracks(series):
-    """The soundtrack releases of a series, the best first (see brook.best_first),
-    without those Brook already gave up on."""
+    """The soundtrack releases of a series (a colour edition's are the original's), the
+    best first (see brook.best_first), each title once, without those Brook already
+    gave up on."""
+    series = tune(series)
     meta = lookup(series)
     names = brook.names_of(series, meta)
     skipped = set(load_state()["music"].get(series, {}).get("skipped", []))
@@ -977,7 +985,11 @@ def find_soundtracks(series):
     for query in (f"{series} OST", f"{series} soundtrack"):
         for r in find_releases(query, category=3000, keep=keep, which=audio_indexer_ids):
             found[r["token"]] = r
-    return sorted(found.values(), key=brook.best_first)
+    # the same release from several indexers is shown once, the best seeded
+    best = {}
+    for r in sorted(found.values(), key=brook.best_first):
+        best.setdefault(r["title"], r)
+    return list(best.values())
 
 
 def set_music(series, **status):
@@ -990,6 +1002,7 @@ def set_music(series, **status):
 
 def grab_music(series, token=None):
     """Downloads a soundtrack for a series: the release given, or the best Brook finds."""
+    series = tune(series)
     if token:
         r = found_releases.get(token)
         if not r:
@@ -1084,6 +1097,7 @@ def music_status(series):
 
 
 def music(series):
+    series = tune(series)
     state = load_state()
     found = albums(series)
     status = music_status(series)
@@ -1095,7 +1109,7 @@ def music(series):
 
 def set_mood(series, name, tracks):
     """Creates, changes or (with no tracks) removes one of a series' own ambiences."""
-    name = (name or "").strip()[:60]
+    series, name = tune(series), (name or "").strip()[:60]
     if not name:
         raise KeyError("an ambience needs a name")
 
@@ -1115,7 +1129,7 @@ def brook_pass():
     if not settings()["brook"]:
         return None
     state = load_state()
-    for series in sorted(library_names(), key=natural):
+    for series in sorted({tune(s) for s in library_names()}, key=natural):
         if music_due(state["music"].get(series), time.time()) and not albums(series):
             set_music(series, state="searching")
             try:
