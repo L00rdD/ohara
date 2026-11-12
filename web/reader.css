@@ -27,6 +27,7 @@ body.bars #top, body.bars #bottom { transform: none; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .count { font-variant-numeric: tabular-nums; color: #c9ae86; }
 #slider { flex: 1; accent-color: #f0b44c; }
+body.rtl #slider { direction: rtl; }
 
 .btn {
   display: inline-block; padding: 8px 14px; border: 1px solid #6b4528; border-radius: 999px; background: #3a2414;

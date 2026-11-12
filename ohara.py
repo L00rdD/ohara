@@ -1679,6 +1679,87 @@ def page_bytes(path, n):
         return z.read(names[n]), names[n]
 
 
+# ---------- double pages ----------
+# Some volumes keep a double page as one wide image (One Piece en couleurs) where others
+# cut it in two; the reader shows a wide one alone and pairs the pages around it as the
+# book does. Reading a page's size costs the library's disk about 10 ms whatever is
+# read, two seconds a volume: it is done once, in the background, and kept in
+# .ohara/shapes.
+HEAD = 32768  # bytes read from a page to find its size; a JPEG's may come late
+shapes_memory = {}
+
+
+def image_size(head):
+    """(width, height) from the first bytes of a WebP, PNG or JPEG; None when they do
+    not tell."""
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return webp_size(head[12:16], head[20:30])
+    if head[:8] == b"\x89PNG\r\n\x1a\n" and len(head) >= 24:
+        return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+    if head[:2] == b"\xff\xd8":
+        return jpeg_size(head)
+    return None
+
+
+def webp_size(kind, body):
+    """A WebP's size from its first chunk: extended, lossless or lossy."""
+    if len(body) < 10:
+        return None
+    if kind == b"VP8X":
+        return 1 + int.from_bytes(body[4:7], "little"), 1 + int.from_bytes(body[7:10], "little")
+    if kind == b"VP8L":
+        bits = int.from_bytes(body[1:5], "little")
+        return 1 + (bits & 0x3FFF), 1 + ((bits >> 14) & 0x3FFF)
+    if kind == b"VP8 ":
+        return int.from_bytes(body[6:8], "little") & 0x3FFF, int.from_bytes(body[8:10], "little") & 0x3FFF
+    return None
+
+
+def jpeg_size(head):
+    """A JPEG's size, from its first frame header past the markers before it."""
+    i = 2
+    while i + 9 <= len(head) and head[i] == 0xFF:
+        marker = head[i + 1]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            return int.from_bytes(head[i + 7:i + 9], "big"), int.from_bytes(head[i + 5:i + 7], "big")
+        i += 2 + int.from_bytes(head[i + 2:i + 4], "big")
+    return None
+
+
+def shapes_file(path):
+    return STATE_DIR / "shapes" / (hashlib.sha1(volume_id(path).encode()).hexdigest() + ".json")
+
+
+def known_wide(path):
+    """The wide pages of a volume, if already found; None otherwise."""
+    key = (str(path), path.stat().st_mtime)
+    if key not in shapes_memory:
+        try:
+            kept = json.loads(shapes_file(path).read_text())
+        except (OSError, ValueError):
+            return None
+        if kept.get("mtime") != key[1]:
+            return None
+        shapes_memory[key] = kept["wide"]
+    return shapes_memory[key]
+
+
+def wide_pages(path):
+    """The pages of a volume wider than tall, as indexes; found once and kept."""
+    with page_lock("shapes:" + str(path)):
+        found = known_wide(path)
+        if found is None:
+            names = pages(path)
+            with zipfile.ZipFile(path) as z:
+                sizes = [image_size(z.open(n).read(HEAD)) for n in names]
+            found = [i for i, size in enumerate(sizes) if size and size[0] > size[1]]
+            out = shapes_file(path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps({"mtime": path.stat().st_mtime, "wide": found}))
+            shapes_memory[(str(path), path.stat().st_mtime)] = found
+        return found
+
+
 # ---------- pages the size of the screen ----------
 # Scans are often far wider than a screen (3000 px, over a megabyte). The reader asks
 # for pages at its width, rounded up to one of WIDTHS; Ohara makes each page once, at
@@ -1826,7 +1907,9 @@ def volume_pages(vid, rid=None):
         "label": volume_label(path.name),
         "number": volume_number(path.name),
         "chapter": is_chapter(path.name),
+        "rtl": not is_webtoon(series.name, state["series"].get(series.name, {})),
         "count": len(pages(path)),
+        "wide": known_wide(path),
         "page": saved.get("page", 0),
         "next": volume_id(nxt) if nxt else None,
     }
@@ -1972,7 +2055,14 @@ def get_pages(h):
     w = page_width(q.get("w"))
     if w and info["count"]:
         warm(volume_path(q["vol"]), w, min(info["page"], info["count"] - 1))
+    if info["wide"] is None:
+        threading.Thread(target=wide_pages, args=(volume_path(q["vol"]),), daemon=True).start()
     h.send(200, info)
+
+
+def get_wide(h):
+    """The wide pages of a volume, found now if they were not yet."""
+    h.send(200, {"wide": wide_pages(volume_path(h.query()["vol"]))})
 
 
 def get_file(h):
@@ -2163,6 +2253,7 @@ GET_ROUTES = {
     "/api/readers": lambda h: h.send(200, readers(load_state(), h.reader())),
     "/api/pages": get_pages,
     "/api/page": get_page,
+    "/api/wide": get_wide,
     "/api/file": get_file,
     "/api/cover": get_cover,
     "/api/decor": get_decor,

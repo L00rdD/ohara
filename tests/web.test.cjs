@@ -30,6 +30,27 @@ test("the right half turns to the next page, the left half back", () => {
   assert.equal(Reader.zone(0.5), "next");
 });
 
+test("a manga turns forward with a click on the left half, a webtoon on the right", () => {
+  assert.equal(Reader.zone(0.1, true), "next");
+  assert.equal(Reader.zone(0.7, true), "prev");
+  assert.equal(Reader.zone(0.7, false), "next");
+});
+
+test("a wide page stands alone and the pages before it pair to end just before it", () => {
+  assert.deepEqual(Reader.spreads(5, []), [[0], [1, 2], [3, 4]]);
+  // One Piece en couleurs T001: a credits page more, the opening double page at 7
+  assert.deepEqual(Reader.spreads(10, [7]), [[0], [1, 2], [3, 4], [5, 6], [7], [8, 9]]);
+  assert.deepEqual(Reader.spreads(10, [6]), [[0], [1], [2, 3], [4, 5], [6], [7, 8], [9]]);
+  assert.deepEqual(Reader.spreads(6, [1, 2, 5]), [[0], [1], [2], [3, 4], [5]]);
+  assert.deepEqual(Reader.spreads(1, []), [[0]]);
+  assert.deepEqual(Reader.spread(6, 10, true, [6]), [6]);
+  assert.deepEqual(Reader.spread(2, 10, true, [6]), [2, 3]);
+  assert.deepEqual(Reader.spread(2, 10, false, [6]), [2]);
+  assert.equal(Reader.after(4, 10, true, [6]), 6);
+  assert.equal(Reader.before(7, 10, true, [6]), 6);
+  assert.equal(Reader.before(6, 10, true, [6]), 4);
+});
+
 test("the bars follow the mouse only while that is on, never a finger", () => {
   assert.equal(Reader.peeks("mouse", "on"), true);
   assert.equal(Reader.peeks("mouse", "off"), false);

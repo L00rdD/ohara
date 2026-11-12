@@ -58,6 +58,7 @@ class Library(unittest.TestCase):
         ohara.found_releases.clear()
         ohara.pages_cache.clear()
         ohara.page_memory.clear()
+        ohara.shapes_memory.clear()
         ohara.torrents_seen.clear()
 
     def tearDown(self):
@@ -716,8 +717,46 @@ class Reading(Library):
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
-        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "count": 2, "page": 1, "next": "Naruto/Naruto T04.cbz"})
+        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "rtl": True, "count": 2, "wide": None, "page": 1, "next": "Naruto/Naruto T04.cbz"})
         self.assertIsNone(ohara.volume_pages("Naruto/Naruto T04.cbz")["next"])
+
+    def test_the_size_of_a_page_from_its_first_bytes(self):
+        from PIL import Image
+
+        def made(fmt, size=(300, 200), **kw):
+            b = io.BytesIO()
+            Image.new("RGB", size, "red").save(b, fmt, **kw)
+            return b.getvalue()
+        exif = Image.Exif()
+        exif[0x010E] = "x" * 3000  # a long description before the frame
+        cases = {"lossy WebP": made("WEBP"), "lossless WebP": made("WEBP", lossless=True), "extended WebP": made("WEBP", exif=exif.tobytes()),
+                 "PNG": made("PNG"), "JPEG": made("JPEG", exif=exif.tobytes()), "progressive JPEG": made("JPEG", progressive=True)}
+        for name, data in cases.items():
+            with self.subTest(name):
+                self.assertEqual(ohara.image_size(data[:ohara.HEAD]), (300, 200))
+        for data in (b"x", b"", made("WEBP")[:20], made("JPEG", exif=exif.tobytes())[:200], made("GIF"), b"RIFF\0\0\0\0WEBPVP8Z" + b"\0" * 20):
+            self.assertIsNone(ohara.image_size(data))
+
+    def test_the_wide_pages_are_found_once_and_kept(self):
+        from PIL import Image
+        path = self.root / "Manga" / "Manga T01.cbz"
+        path.parent.mkdir(parents=True)
+        with zipfile.ZipFile(path, "w") as z:
+            for name, size in (("1.webp", (200, 300)), ("2.webp", (600, 300)), ("3.jpg", (200, 300)), ("4.txt", None)):
+                b = io.BytesIO()
+                if size:
+                    Image.new("RGB", size, "red").save(b, "JPEG" if name.endswith("jpg") else "WEBP")
+                z.writestr(name, b.getvalue())
+            z.writestr("5.png", b"broken")
+        self.assertIsNone(ohara.known_wide(path))
+        self.assertEqual(ohara.wide_pages(path), [1])
+        ohara.shapes_memory.clear()
+        with mock.patch.object(ohara.zipfile, "ZipFile", side_effect=AssertionError("not again")):
+            self.assertEqual(ohara.wide_pages(path), [1])  # from the disk
+        os.utime(path, (1, 1))
+        self.assertIsNone(ohara.known_wide(path))  # the file changed: found again
+        ohara.shapes_file(path).write_text("{")
+        self.assertIsNone(ohara.known_wide(path))
 
     def test_pages_the_size_of_a_screen(self):
         from PIL import Image
@@ -845,6 +884,8 @@ class Http(Reading):
     def test_pages_api(self):
         code, _, body = self.call("GET", "/api/pages?vol=Naruto%2FNaruto%20T01.cbz")
         self.assertEqual((code, json.loads(body)["count"]), (200, 2))
+        self.assertEqual(json.loads(self.call("GET", "/api/wide?vol=Naruto/Naruto%20T01.cbz")[2]), {"wide": []})
+        self.assertEqual(json.loads(self.call("GET", "/api/pages?vol=Naruto/Naruto%20T01.cbz")[2])["wide"], [])
         code, head, body = self.call("GET", "/api/page?vol=Naruto/Naruto%20T01.cbz&n=1")
         self.assertEqual(code, 200)
         self.assertIn("image/png", head)

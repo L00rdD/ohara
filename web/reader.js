@@ -1,6 +1,8 @@
-// Ohara's reader: one volume, page by page or two pages side by side, left to right.
-// A click on the right half turns to the next page, on the left half back to the
-// previous one. The bars show with the corner button, and while the mouse moves unless
+// Ohara's reader: one volume, page by page or two pages side by side. A manga reads
+// right to left: the first page of two is on the right, a click on the left half turns
+// to the next page, on the right half back to the previous one; a webtoon the other
+// way. A double page kept as one wide image is shown alone, and the pages around it
+// paired as the book does. The bars show with the corner button, and while the mouse moves unless
 // the button in the bottom bar has turned that off.
 // The page reached is saved on the server, so another device picks it up. Pages come
 // at the width of the screen; once a volume opens, all its pages come in the
@@ -9,34 +11,51 @@
 const Reader = (() => {
   // ---- pure page arithmetic (tested in node) ----
 
-  // The pages shown together from page p: the cover alone, then pairs 1-2, 3-4…
-  function spread(p, count, double) {
+  // A volume's spreads: the cover alone, then pairs 1-2, 3-4… A wide page (a double
+  // page in one image) stands alone, and the pages before it pair so the last one
+  // ends a pair, as a double page opens a book's spread; one left over stands alone.
+  function spreads(count, wide) {
+    const out = [[0]];
+    let start = 1;
+    for (let n = 1; n <= count; n++) {
+      if (n < count && !wide.includes(n)) continue;
+      let i = start;
+      if (n < count && (n - start) % 2) out.push([i++]);
+      for (; i < n; i += 2) out.push(i + 1 < n ? [i, i + 1] : [i]);
+      if (n < count) out.push([n]);
+      start = n + 1;
+    }
+    return out;
+  }
+
+  // The pages shown together from page p
+  function spread(p, count, double, wide = []) {
     if (!double || p === 0) return [p];
-    const first = p % 2 === 1 ? p : p - 1;
-    return first + 1 < count ? [first, first + 1] : [first];
+    return spreads(count, wide).find((s) => s.includes(p)) || [p];
   }
 
   // The first page after the spread holding p; count when it was the last
-  function after(p, count, double) {
-    const s = spread(p, count, double);
+  function after(p, count, double, wide) {
+    const s = spread(p, count, double, wide);
     return Math.min(s[s.length - 1] + 1, count);
   }
 
-  function before(p, count, double) {
-    const s = spread(p, count, double);
-    return s[0] === 0 ? 0 : spread(s[0] - 1, count, double)[0];
+  function before(p, count, double, wide) {
+    const s = spread(p, count, double, wide);
+    return s[0] === 0 ? 0 : spread(s[0] - 1, count, double, wide)[0];
   }
 
-  // Where a click lands, from its place across the screen (0 to 1)
-  const zone = (x) => (x < 0.5 ? "prev" : "next");
+  // Where a click lands, from its place across the screen (0 to 1): the left half
+  // turns forward in a book read right to left
+  const zone = (x, rtl) => ((x < 0.5) === Boolean(rtl) ? "next" : "prev");
 
   // The width in pixels a page is shown at: the window's, half of it for two pages
   const pageWidth = (w, ratio, double) => Math.ceil((w * ratio) / (double ? 2 : 1));
 
   // The pages to have ready around p: two before, six after the spread shown
-  function around(p, count, double) {
-    const from = Math.max(0, spread(p, count, double)[0] - 2);
-    const to = Math.min(count, after(p, count, double) + 6);
+  function around(p, count, double, wide) {
+    const from = Math.max(0, spread(p, count, double, wide)[0] - 2);
+    const to = Math.min(count, after(p, count, double, wide) + 6);
     return Array.from({ length: to - from }, (_, i) => from + i);
   }
 
@@ -49,7 +68,7 @@ const Reader = (() => {
   // Whether a pointer moving shows the bars: a mouse, when the bars follow it
   const peeks = (pointerType, follow) => follow === "on" && pointerType === "mouse";
 
-  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around, wholeOrder, nearEnd, peeks };
+  if (typeof document === "undefined") return { spreads, spread, after, before, zone, pageWidth, around, wholeOrder, nearEnd, peeks };
 
   // ---- the page ----
   const $ = (id) => document.getElementById(id);
@@ -61,6 +80,7 @@ const Reader = (() => {
     peek: pref("peek", "on"),
   };
   let info = null;
+  const wide = () => (info && info.wide) || []; // the wide pages, once the server knows them
   let page = 0;
   let saveTimer = null;
 
@@ -131,7 +151,7 @@ const Reader = (() => {
     return ready.get(n);
   }
   function getAhead() {
-    const keep = new Set(around(page, info.count, settings.double));
+    const keep = new Set(around(page, info.count, settings.double, wide()));
     for (const n of ready.keys()) if (!keep.has(n)) ready.delete(n);
     for (const n of keep) image(n);
   }
@@ -142,7 +162,7 @@ const Reader = (() => {
   async function draw() {
     const stage = $("stage");
     const turn = ++drawing;
-    const shown = spread(page, info.count, settings.double);
+    const shown = spread(page, info.count, settings.double, wide());
     const imgs = shown.map(image);
     const slow = setTimeout(() => stage.classList.add("waiting"), 250);
     await Promise.all(imgs.map((i) => i.whole));
@@ -150,14 +170,14 @@ const Reader = (() => {
     if (turn !== drawing) return;
     stage.classList.remove("waiting");
     stage.dataset.fit = settings.fit;
-    stage.replaceChildren(...imgs);
+    stage.replaceChildren(...(info.rtl ? [...imgs].reverse() : imgs));
     stage.scrollTo(0, 0);
     getAhead();
     readyNext();
   }
 
   function say() {
-    const shown = spread(page, info.count, settings.double);
+    const shown = spread(page, info.count, settings.double, wide());
     $("count").textContent = `${shown.map((n) => n + 1).join("-")} / ${info.count}`;
     $("slider").value = page + 1;
     const w = I18n.words();
@@ -183,12 +203,12 @@ const Reader = (() => {
   }
 
   function next() {
-    const n = after(page, info.count, settings.double);
+    const n = after(page, info.count, settings.double, wide());
     if (n >= info.count) return end();
     go(n);
   }
 
-  const prev = () => ($("end").hidden ? go(before(page, info.count, settings.double)) : go(page));
+  const prev = () => ($("end").hidden ? go(before(page, info.count, settings.double, wide())) : go(page));
 
   function end() {
     save(true);
@@ -217,9 +237,21 @@ const Reader = (() => {
     $("title").textContent = document.title;
     $("back").href = $("end-back").href = "/#" + encodeURIComponent(info.series);
     $("slider").max = info.count;
+    document.body.classList.toggle("rtl", Boolean(info.rtl)); // the slider runs right to left too
     if (typeof Player !== "undefined") Player.open(info.series);
     await go(info.page >= info.count - 1 ? 0 : info.page);
     fetchAll();
+    findWide(info);
+  }
+
+  // the wide pages of a volume opened for the first time, found by the server in a
+  // second or two; the spreads are paired again once they are known
+  async function findWide(opened) {
+    if (opened.wide) return;
+    const found = await fetch(`/api/wide?vol=${encodeURIComponent(opened.id)}`).then((r) => r.json(), () => null);
+    if (!found || info !== opened || !found.wide.length) return;
+    info.wide = found.wide;
+    if (settings.double) go(page);
   }
 
   // the bars: shown by the corner button, or for a few seconds while the mouse moves
@@ -250,7 +282,8 @@ const Reader = (() => {
   }
 
   function keys(e) {
-    const k = { ArrowLeft: prev, ArrowRight: next, " ": next, PageDown: next, PageUp: prev, Escape: () => (location.href = $("back").href) }[e.key];
+    const [left, right] = info.rtl ? [next, prev] : [prev, next];
+    const k = { ArrowLeft: left, ArrowRight: right, " ": next, PageDown: next, PageUp: prev, Escape: () => (location.href = $("back").href) }[e.key];
     if (!k) return;
     e.preventDefault();
     k();
@@ -266,7 +299,7 @@ const Reader = (() => {
       openVolume(info.next);
     };
     $("slider").oninput = (e) => go(+e.target.value - 1);
-    $("stage").onclick = (e) => (zone(e.clientX / innerWidth) === "next" ? next() : prev());
+    $("stage").onclick = (e) => (zone(e.clientX / innerWidth, info.rtl) === "next" ? next() : prev());
     $("menu").onclick = toggleBars;
     addEventListener("pointermove", peekBars);
     $("mode").onclick = () => setting("double", !settings.double);

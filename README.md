@@ -90,9 +90,12 @@ Tree of Knowledge.
   torrent is removed (no seeding). Volumes already there are left out of a pack.
   `.zip` becomes `.cbz`, `.cbr`/`.cb7` are converted with 7-Zip, a release of plain
   images becomes one `.cbz` per folder. PDF and EPUB open in the browser's viewer.
-- **Reading.** Left to right: a click on the right half turns to the next page, on
-  the left half back. One page or two side by side, fitted to the height or the
-  width; the page reached is saved on the server, so another device picks it up.
+- **Reading.** A manga right to left, as in the book: the first of two pages on the
+  right, a click on the left half (or the left arrow) turns to the next page, on the
+  right half back; a webtoon the other way. One page or two side by side, fitted to
+  the height or the width. A double page kept as one wide image (as in some colour
+  editions) is shown alone, and the pages before it paired so it opens a spread, as in
+  the book; which pages are wide is read once per volume and kept in `.ohara/shapes`; the page reached is saved on the server, so another device picks it up.
   Pages come at the width of the screen, in WebP, made from the page you are at as
   soon as a volume opens, and kept in `.ohara/pages` (for the last 12 volumes opened)
   and in memory for the volumes being read, as the library's disk is slow when busy.
