@@ -270,10 +270,12 @@ const Words = (() => {
   // the cookie that tells the server who reads in this browser, kept for years
   const readerCookie = (id) => `ohara-reader=${encodeURIComponent(id)}; max-age=${10 * 365 * 86400}; path=/; samesite=lax`;
 
+  // the library kept in the browser, unless it was kept while nobody said who reads
+  // (it would show someone's ribbons under « Qui lit ? »)
   function keptLibrary(text) {
     try {
       const kept = JSON.parse(text);
-      return kept && Array.isArray(kept.series) ? kept : null;
+      return kept && Array.isArray(kept.series) && !whoReads(kept).asked ? kept : null;
     } catch {
       return null;
     }

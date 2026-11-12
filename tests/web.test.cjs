@@ -348,6 +348,9 @@ test("the library kept in the browser", () => {
   assert.equal(Ohara.keptLibrary(null), null);
   assert.equal(Ohara.keptLibrary("{not json"), null);
   assert.equal(Ohara.keptLibrary('{"series": 3}'), null);
+  const nobody = { series: [], readers: [{ id: "1" }, { id: "a1" }], reader: null };
+  assert.equal(Ohara.keptLibrary(JSON.stringify(nobody)), null);
+  assert.equal(Ohara.keptLibrary(JSON.stringify({ ...nobody, reader: "a1" })).reader, "a1");
 });
 
 test("a reader: their name, the first one's until renamed, and their badge", () => {
