@@ -1,6 +1,7 @@
 // Ohara's reader: one volume, page by page or two pages side by side, left to right.
 // A click on the right half turns to the next page, on the left half back to the
-// previous one. The bars show while the mouse moves, or with the corner button.
+// previous one. The bars show with the corner button, and while the mouse moves unless
+// the button in the bottom bar has turned that off.
 // The page reached is saved on the server, so another device picks it up. Pages come
 // at the width of the screen; once a volume opens, all its pages come in the
 // background and stay in memory, so turning a page does not wait on the network. A
@@ -45,7 +46,10 @@ const Reader = (() => {
   // Whether to get the next volume ready: within the last ten pages
   const nearEnd = (p, count) => p >= count - 10;
 
-  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around, wholeOrder, nearEnd };
+  // Whether a pointer moving shows the bars: a mouse, when the bars follow it
+  const peeks = (pointerType, follow) => follow === "on" && pointerType === "mouse";
+
+  if (typeof document === "undefined") return { spread, after, before, zone, pageWidth, around, wholeOrder, nearEnd, peeks };
 
   // ---- the page ----
   const $ = (id) => document.getElementById(id);
@@ -54,6 +58,7 @@ const Reader = (() => {
   const settings = {
     double: pref("mode", innerWidth > innerHeight * 1.2 ? "double" : "single") === "double",
     fit: pref("fit", "height"),
+    peek: pref("peek", "on"),
   };
   let info = null;
   let page = 0;
@@ -158,6 +163,7 @@ const Reader = (() => {
     const w = I18n.words();
     $("mode").textContent = settings.double ? w.twoPages : w.onePage;
     $("fit").textContent = settings.fit === "height" ? w.fitHeight : w.fitWidth;
+    $("peek").textContent = settings.peek === "on" ? w.peekOn : w.peekOff;
   }
 
   function save(done) {
@@ -217,13 +223,22 @@ const Reader = (() => {
   }
 
   // the bars: shown by the corner button, or for a few seconds while the mouse moves
+  // if they follow it
   let barsTimer = null;
   const toggleBars = () => document.body.classList.toggle("bars");
   function peekBars(e) {
-    if (e.pointerType !== "mouse") return;
+    if (!peeks(e.pointerType, settings.peek)) return;
     document.body.classList.add("bars");
     clearTimeout(barsTimer);
     if (!e.target.closest(".bar")) barsTimer = setTimeout(() => document.body.classList.remove("bars"), 2500);
+  }
+
+  // whether the bars follow the mouse; they stay up while their own button is clicked
+  function followMouse() {
+    settings.peek = settings.peek === "on" ? "off" : "on";
+    localStorage.setItem("ohara-peek", settings.peek);
+    clearTimeout(barsTimer);
+    say();
   }
 
   function setting(key, value) {
@@ -256,6 +271,7 @@ const Reader = (() => {
     addEventListener("pointermove", peekBars);
     $("mode").onclick = () => setting("double", !settings.double);
     $("fit").onclick = () => setting("fit", settings.fit === "height" ? "width" : "height");
+    $("peek").onclick = followMouse;
     $("end-stay").onclick = () => go(page);
     addEventListener("keydown", keys);
     await openVolume(vid);

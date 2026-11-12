@@ -30,6 +30,12 @@ test("the right half turns to the next page, the left half back", () => {
   assert.equal(Reader.zone(0.5), "next");
 });
 
+test("the bars follow the mouse only while that is on, never a finger", () => {
+  assert.equal(Reader.peeks("mouse", "on"), true);
+  assert.equal(Reader.peeks("mouse", "off"), false);
+  assert.equal(Reader.peeks("touch", "on"), false);
+});
+
 test("sizes in Mo and Go", () => {
   assert.equal(Ohara.size(7.41e9), "7,4 Go");
   assert.equal(Ohara.size(3.6e8), "360 Mo");
