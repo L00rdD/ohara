@@ -70,15 +70,20 @@ const Words = (() => {
     return s.volumes.find((v) => v.readable && v.pages && !v.done) || s.volumes.find((v) => v.readable && !v.done) || s.volumes[0];
   }
 
-  // a volume's name in the language chosen: "Tome 5", "Volume 5", or its file's name
+  // a volume in words: "tome 5", a webtoon's "chapitre 5", or "tome" and its file's name
+  function volumeWord(v) {
+    return v.chapter && v.number ? W().chapters(v.number, v.number) : W().volume(v.number || v.label);
+  }
+
+  // a volume's name in the language chosen: "Tome 5", "Volume 5", "Chapter 5", or its file's name
   function volumeName(v) {
     if (!v.number) return v.label;
-    const w = W().volume(v.number);
+    const w = volumeWord(v);
     return w.charAt(0).toUpperCase() + w.slice(1);
   }
 
   function readLabel(v) {
-    const what = W().volume(v.number ? v.number : v.label);
+    const what = volumeWord(v);
     if (v.done) return `${W().reread} ${what}`;
     return `${v.pages ? W().readOn : W().readFirst} ${what}`;
   }
@@ -310,7 +315,7 @@ const Words = (() => {
   }
 
   return { size, tomes, describe, readingState, eta, downloadState, spans, tomesWord, completeText, seriesFacts, nextToRead, readLabel, openUrl, lanternLevel,
-    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn, keptLibrary };
+    spineLook, lecternState, lecternPages, plaqueText, selectionText, lanternFill, tileLook, moteStep, keyAction, indexerNotes, coverUrl, pageUrl, volumeName, volumeWord, spineColours, contents, spineDraw, downloadName, readCounts, upTo, lecternVolume, selectionActions, decorUrl, decorChoices, decorName, lighterText, bySeries, redrawn, keptLibrary };
 })();
 
 if (typeof module !== "undefined") module.exports = Words;

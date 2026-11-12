@@ -69,6 +69,11 @@ class Names(unittest.TestCase):
             "One.Piece.Tome.105.FRENCH.CBZ": "One Piece",
             "Boruto - Naruto Next Generations Tomes 1 à 16 [FR] [CBZ]": "Boruto - Naruto Next Generations",
             "[Team]": "[Team]",
+            "[lord_ne] Return of the Blossoming Blade (Return of the Mount Hua Sect) ch001-158 (Complete) [WEBTOON]": "Return of the Blossoming Blade",
+            "[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing": "Ashtarte",
+            "[Dalte] Father, I Don't Want This Marriage (2021) (Digital) (Tappytoon) | Ongoing": "Father, I Don't Want This Marriage",
+            "Solo Leveling Season 2 c045-060": "Solo Leveling",
+            "Steins;Gate 0": "Steins;Gate 0",
         }
         for title, series in cases.items():
             self.assertEqual(ohara.guess_series(title), series, title)
@@ -83,6 +88,22 @@ class Names(unittest.TestCase):
         self.assertEqual(ohara.volume_label("Frieren - Tome 12.5.cbz"), "Tome 12.5")
         self.assertEqual(ohara.volume_label("Volume 3.pdf"), "Tome 3")
         self.assertEqual(ohara.volume_label("Artbook.cbz"), "Artbook")
+
+    def test_a_webtoons_chapters(self):
+        cases = {
+            "Ashtarte c001 (2022) (Digital) (Dalte).cbz": (1, "Chapitre 1", True),
+            "Return of the Blossoming Blade - #012 - Episode 12.cbz": (12, "Chapitre 12", True),
+            "My Life as an Internet Novel c000 (2019) (Digital) (Dalte).cbz": (0, "Chapitre 0", True),
+            "Chainsaw Man ch. 12.5.cbz": (12.5, "Chapitre 12.5", True),
+            "Mob Psycho 100 c045.cbz": (45, "Chapitre 45", True),
+            "Naruto v01 c001.cbz": (1, "Tome 1", False),  # a tome that says its first chapter
+            "Mob Psycho 100 - 045.cbz": (45, "Tome 45", False),
+            "Epic 3.cbz": (3, "Tome 3", False),
+        }
+        for name, (number, label, chapter) in cases.items():
+            self.assertEqual((ohara.volume_number(name), ohara.volume_label(name), ohara.is_chapter(name)), (number, label, chapter), name)
+        for title in ("[Dalte] Ashtarte S1-2 (2022) (Digital) (Tappytoon) | Ongoing", "Return of the Blossoming Blade ch001-158"):
+            self.assertIsNone(ohara.tome_range(title), title)  # neither seasons nor chapters are tomes
 
     def test_language(self):
         self.assertEqual(ohara.language("Frieren [CBZ/FR]"), "FR")
@@ -450,6 +471,14 @@ class Import(Library):
             cbz(src / f"Frieren - Tome {n:02d}.cbz", ["1.png"])
         self.assertEqual(ohara.import_download(src, "Frieren"), 1)
         self.assertEqual(sorted(p.name for p in (self.root / "Frieren").iterdir()), ["Frieren - Tome 02.cbz", "Frieren T01.cbz"])
+
+    def test_a_webtoons_chapters_come_in_one_by_one(self):
+        cbz(self.root / "Ashtarte" / "Ashtarte c001 (2022) (Digital) (Dalte).cbz", ["1.png"])
+        src = self.root / ".incoming" / "f8" / "Ashtarte (2022) (Digital) (Dalte)"
+        for n in (0, 1, 2, 3):
+            cbz(src / f"Ashtarte c{n:03d} (2022) (Digital) (Dalte).cbz", ["1.png"])
+        self.assertEqual(ohara.import_download(src.parent, "Ashtarte"), 3)
+        self.assertEqual(sorted(ohara.owned_numbers(self.root / "Ashtarte")), [0, 1, 2, 3])
 
     def test_cbr_is_unpacked_with_7zip(self):
         src = self.root / ".incoming" / "f2"
@@ -1335,6 +1364,15 @@ class Chapters(Library):
         with mock.patch.object(ohara.chapters, "chapters", side_effect=OSError("away")):
             ohara.chapters_pass()  # said, and tried again next pass
         self.assertEqual(ohara.load_state()["chapters"]["Naruto"]["at"], 0)
+
+
+    def test_a_webtoons_chapters_are_not_the_tomes_wikipedia_lists(self):
+        cbz(self.root / "Ashtarte" / "Ashtarte c001 (2022) (Digital) (Dalte).cbz", ["1.png"])
+        ohara.save_state({"chapters": {"Ashtarte": {"volumes": {"1": [1, 7]}, "at": 0}}})
+        with mock.patch.object(ohara, "safe_torrents", return_value=[]):
+            [ashtarte] = ohara.library()["series"]
+        [v] = ashtarte["volumes"]
+        self.assertEqual((v["number"], v["label"], v["chapter"], v["chapters"]), (1, "Chapitre 1", True, None))
 
 
 class StuckTransmission(Library):

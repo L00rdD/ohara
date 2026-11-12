@@ -32,7 +32,7 @@ import chopper  # noqa: E402
 import den_den  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
-from names import (LANG_ORDER, guess_series, language, natural, norm, safe_name,  # noqa: E402
+from names import (LANG_ORDER, guess_series, is_chapter, language, natural, norm, safe_name,  # noqa: E402
                    speed, tome_range, volume_label, volume_number)
 
 MANGA = Path(os.environ.get("OHARA_MANGA", "/manga"))
@@ -1239,7 +1239,8 @@ def series_info(d, state):
     vols = [volume_info(v, state["progress"], state["spines"]) for v in volumes(d)]
     known = state["chapters"].get(d.name, {}).get("volumes", {})
     for v in vols:
-        whole = v["number"] and v["number"] == int(v["number"])
+        # a webtoon's chapter is not the tome of that number Wikipedia lists
+        whole = v["number"] and v["number"] == int(v["number"]) and not v["chapter"]
         v["chapters"] = known.get(str(int(v["number"]))) if whole else None
     entry = state["series"].get(d.name, {})
     meta = state["lookups"].get(norm(d.name)) or {}
@@ -1273,6 +1274,7 @@ def volume_info(path, progress, spines=None):
         "id": vid,
         "label": volume_label(path.name),
         "number": volume_number(path.name),
+        "chapter": is_chapter(path.name),  # a webtoon's chapter, not a tome
         "file": path.name,
         "readable": readable,
         "page": p.get("page", 0),

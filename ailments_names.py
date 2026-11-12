@@ -283,9 +283,10 @@ def pattern(file):
 def file_names(series):
     """The ailment of a series whose numbered volumes are named in several ways, or
     None; a series where two files would take the same name is left out, and so is one
-    AniList does not know (novels: their files carry each book's title, worth keeping)."""
+    AniList does not know (novels: their files carry each book's title, worth keeping),
+    and so is a webtoon's chapters (named like tomes they would be taken for tomes)."""
     vols = series["volumes"]
-    if not (series.get("meta") or {}).get("id") or not vols or any(v["number"] is None for v in vols):
+    if not (series.get("meta") or {}).get("id") or not vols or any(v["number"] is None or v.get("chapter") for v in vols):
         return None
     shapes = {pattern(v["file"]) for v in vols}
     if len(shapes) < 2:

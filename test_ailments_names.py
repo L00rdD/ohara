@@ -18,11 +18,11 @@ if ohara is None:
     sys.modules["ohara"] = ohara  # as it is when it runs: Chopper's remedies are given it
 
 import ailments_names as an  # noqa: E402
-from names import volume_number  # noqa: E402
+from names import is_chapter, volume_number  # noqa: E402
 
 
 def vol(series, file):
-    return {"id": f"{series}/{file}", "file": file, "number": volume_number(file)}
+    return {"id": f"{series}/{file}", "file": file, "number": volume_number(file), "chapter": is_chapter(file)}
 
 
 def series(name, files, meta=None):
@@ -175,7 +175,8 @@ class FileNames(unittest.TestCase):
                    series("Bleach", ["Bleach T01.cbz", "Bleach 2.cbz", "Bleach Gaiden.cbz"]),  # one without a number
                    series("Berserk", ["Berserk T01.cbz", "Berserk 1 (2023).cbz"]),  # two would be Berserk T01.cbz
                    series("Empty", []),
-                   series("Harry Potter", ["Rowling [Tome 1] - L'école des sorciers.epub", "Harry Potter T02.epub"])]  # unknown to AniList: a novel
+                   series("Harry Potter", ["Rowling [Tome 1] - L'école des sorciers.epub", "Harry Potter T02.epub"]),  # unknown to AniList: a novel
+                   series("Ashtarte", ["Ashtarte c001 (2022) (Digital) (Dalte).cbz", "Ashtarte - #002 - Episode 2.cbz"], {"id": 7})]  # a webtoon's chapters
         self.assertEqual(an.files_named_in_several_ways(snap(*shelves)), [])
 
 
