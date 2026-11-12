@@ -23,7 +23,9 @@ Tree of Knowledge.
   main and accent colours, and the liveliest square of the illustration for the top
   of the spine. Three styles of spines in the settings: *Comme le tome* (from the
   cover), *Reliure d'Ohara* (leather in the series' colour, gilt bands) and *Sobre*.
-  Each series' bays wear its AniList banner on their back wall. A long series takes
+  Each series' bays wear its AniList banner on their back wall; a colour edition ("One
+  Piece en couleurs") takes the banner, cover and chapters of the series it colours,
+  and only ever takes colour releases, as the original only ever takes the others. A long series takes
   as many bays as its volumes need; small ones (a shelf's worth) share a bay, each on
   its own shelf under a small plaque. A tome kept in several formats (an EPUB and a
   PDF) stands once, and counts once. The contents (≡) list every series A to Z and

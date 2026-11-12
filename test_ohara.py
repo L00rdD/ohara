@@ -953,7 +953,18 @@ class Follow(Library):
         self.assertFalse(ohara.same_series(colour, "One Piece", entry, facts))
         self.assertTrue(ohara.same_series(original, "One Piece", entry, facts))
         self.assertTrue(ohara.same_series(colour, "One Piece en couleurs", entry, facts))
+        self.assertFalse(ohara.same_series(original, "One Piece en couleurs", entry, facts))  # not the black and white one
         self.assertFalse(ohara.same_series(original, "One Piece", {}, facts))
+
+    def test_a_colour_edition_takes_the_facts_of_the_series_it_colours(self):
+        self.assertEqual([ohara.uncoloured(n) for n in ("One Piece en couleurs", "Naruto (Colour)", "Dr. Stone - Colored", "Bleach")],
+                         ["One Piece", "Naruto", "Dr. Stone", "Bleach"])
+        with mock.patch.object(ohara, "anilist_fetch", return_value={"id": 21, "banner": "b", "names": []}) as fetch:
+            self.assertEqual(ohara.lookup("One Piece en couleurs")["id"], 21)
+        fetch.assert_called_once_with("One Piece")
+        self.assertEqual(ohara.load_state()["lookups"]["onepieceencouleurs"]["id"], 21)
+        self.assertFalse(ohara.fresh({}, "One Piece en couleurs"))  # a miss from before: asked again
+        self.assertTrue(ohara.fresh({}, "Bleach"))
 
     def test_plan_with_nothing_to_find(self):
         self.assertEqual(ohara.plan("Frieren", [], {"downloads": {}}), ([], []))

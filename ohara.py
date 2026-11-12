@@ -160,21 +160,31 @@ def best_match(name, found):
     return next(r for r in ranks if r)[0]
 
 
-def fresh(cached):
-    """An AniList answer kept since banners and names are asked for (or a known miss)."""
-    return not cached or ("banner" in cached and "names" in cached)
+def fresh(cached, name=""):
+    """An AniList answer kept since banners and names are asked for, or a known miss;
+    a colour edition's miss is asked again, under the name of the series it colours."""
+    if not cached:
+        return uncoloured(name) == name.strip()
+    return "banner" in cached and "names" in cached
+
+
+def uncoloured(name):
+    """A series' name without its colour words: "One Piece en couleurs" → "One Piece"."""
+    return re.sub(r"[\s\-–:()\[\]]+$", "", re.sub(r"(?i)\b(en )?couleurs?\b|\bcolou?r(ed)?\b|カラー", "", name)).strip()
 
 
 def lookup(name):
     """The AniList facts of a series name, asked once and kept (an empty dict when
-    AniList does not know it; nothing kept when it does not answer)."""
+    AniList does not know it; nothing kept when it does not answer). A colour edition
+    is asked under the name of the series it colours, whose banner, cover and chapters
+    are its own."""
     key = norm(name)
     cached = load_state()["lookups"].get(key)
     # kept answers from before the banners and names were asked for are asked again
-    if cached is not None and fresh(cached):
+    if cached is not None and fresh(cached, name):
         return cached
     try:
-        found = anilist_fetch(name)
+        found = anilist_fetch(uncoloured(name) or name)
     except Exception:
         return {}
 
@@ -630,14 +640,14 @@ COLOUR = re.compile(r"(?i)\b(en )?couleurs?\b|\bcolou?r(ed)?\b|カラー")
 
 
 def same_series(r, series, entry, facts):
-    """Whether a release belongs to a series: same name, or same AniList entry but
-    not a colour edition of it (unless the series is the colour one)."""
+    """Whether a release belongs to a series: same name, or same AniList entry and the
+    same colours (a colour edition and the original share their AniList entry)."""
     if norm(r["series"]) == norm(series):
         return True
     meta = facts.get(r["series"]) or {}
     if not entry.get("anilist") or meta.get("id") != entry.get("anilist"):
         return False
-    return bool(COLOUR.search(series)) or not COLOUR.search(r["title"])
+    return bool(COLOUR.search(series)) == bool(COLOUR.search(r["title"]))
 
 
 def complete(series):
@@ -1379,7 +1389,7 @@ def refresh_meta():
     """Asks AniList about the series of the library it has not been asked about yet."""
     state = load_state()
     names = set(library_names()) | {d["series"] for d in state["downloads"].values()}
-    stale = lambda n: norm(n) not in state["lookups"] or not fresh(state["lookups"][norm(n)])
+    stale = lambda n: norm(n) not in state["lookups"] or not fresh(state["lookups"][norm(n)], n)
     missing = sorted(n for n in names if stale(n))
     found = lookups(missing)
 
