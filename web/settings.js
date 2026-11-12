@@ -113,6 +113,7 @@ const Settings = (() => {
     go.type = "submit";
     form.append(input, go);
     const off = button(W().discordUnlink, "button quiet", () => link(""));
+    off.hidden = true;
     const show = (st) => {
       said.className = st.discord ? "done-note" : "note";
       said.textContent = st.discord ? W().discordLinked : W().discordNone;
