@@ -104,7 +104,8 @@ Tree of Knowledge.
   comes can be given up for another release of the same tomes, from the lantern
   (*Une autre version*) or from Chopper; Ohara remembers the one given up on, and one
   cancelled, and does not take it again.
-- **On Discord.** With a channel's webhook in `OHARA_DISCORD_WEBHOOK`, the Den Den
+- **On Discord.** With a channel's webhook, pasted in the settings (a test message is
+  posted at once) or set in `OHARA_DISCORD_WEBHOOK`, the Den Den
   Mushi says there when tomes come in (« 3 tomes de Naruto arrivés : T12 à T14 », with
   the cover and a link) and when following a series sends for new ones.
 - **French or English.** The flag in the header switches the interface; the choice

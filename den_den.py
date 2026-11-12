@@ -17,6 +17,8 @@ WORDS = {
         "found": lambda series: f"Du nouveau pour {series}",
         "on_its_way": lambda what: f"En route : {what}.",
         "read": "Les lire dans Ohara",
+        "linked": "Ohara est relié à ce salon",
+        "linked_text": "Les tomes qui arrivent et les nouveautés des séries suivies seront annoncés ici.",
     },
     "en": {
         "and": " and ",
@@ -25,6 +27,8 @@ WORDS = {
         "found": lambda series: f"Something new for {series}",
         "on_its_way": lambda what: f"On its way: {what}.",
         "read": "Read them in Ohara",
+        "linked": "Ohara is linked to this channel",
+        "linked_text": "The volumes that come in and what followed series get will be told here.",
     },
 }
 
@@ -71,6 +75,12 @@ def found(series, releases, cover=None, link=None, lang="fr"):
     numbers = sorted({n for r in releases if r.get("range") for n in range(r["range"][0], r["range"][1] + 1)})
     what = tomes(numbers, lang) if numbers else ", ".join(r["title"] for r in releases)
     return card(w["found"](series), w["on_its_way"](what), cover, link)
+
+
+def linked(lang="fr"):
+    """The message that says a channel is linked: sent at once, to try the webhook."""
+    w = WORDS[lang]
+    return card(w["linked"], w["linked_text"])
 
 
 def send(webhook, payload):

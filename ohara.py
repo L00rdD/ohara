@@ -707,14 +707,43 @@ def safe_complete(series):
         return None
 
 
+WEBHOOK = re.compile(r"https://(?:discord|discordapp)\.com/api/webhooks/\d+/[\w-]+$")
+
+
+def discord():
+    """The Discord channel Ohara speaks to and its own address (for the links): those
+    set in the settings, else OHARA_DISCORD_WEBHOOK and OHARA_URL."""
+    st = load_state()["settings"]
+    return st.get("discord") or DISCORD_WEBHOOK, st.get("address") or OHARA_URL
+
+
+def link_discord(url, address=""):
+    """Links a Discord channel from the settings, pasted from a phone as well: the
+    webhook is tried at once with a message, and kept only if Discord takes it. An
+    empty url unlinks."""
+    url = url.strip()
+    if url and not WEBHOOK.match(url):
+        raise ValueError("not a webhook")
+    if url:
+        den_den.send(url, den_den.sign(den_den.linked(DISCORD_LANG), DISCORD_NAME))
+
+    def change(state):
+        state["settings"]["discord"] = url
+        if address:
+            state["settings"]["address"] = address.rstrip("/")
+    update_state(change)
+    return settings_page()
+
+
 def tell(message, series, what):
     """Says something of a series on Discord (see den_den.py), with its cover and a
-    link to it, when a webhook is set."""
-    if not DISCORD_WEBHOOK:
+    link to it, when a channel is linked."""
+    webhook, address = discord()
+    if not webhook:
         return None
     cover = (load_state()["lookups"].get(norm(series)) or {}).get("cover")
-    link = f"{OHARA_URL}/#{urllib.parse.quote(series)}" if OHARA_URL else None
-    return den_den.post(DISCORD_WEBHOOK, den_den.sign(message(series, what, cover, link, DISCORD_LANG), DISCORD_NAME))
+    link = f"{address}/#{urllib.parse.quote(series)}" if address else None
+    return den_den.post(webhook, den_den.sign(message(series, what, cover, link, DISCORD_LANG), DISCORD_NAME))
 
 
 def check_follows():
@@ -828,7 +857,7 @@ def read_spines(limit=10):
 def settings():
     st = load_state()["settings"]
     return {"spines": st.get("spines", "tome"), "brook": st.get("brook", True), "franky": st.get("franky", False),
-            "ribbon": st.get("ribbon", True)}
+            "ribbon": st.get("ribbon", True), "discord": bool(st.get("discord") or DISCORD_WEBHOOK)}
 
 
 def settings_page():
@@ -1773,6 +1802,11 @@ def get_decor(h):
     h.send(200, f.read_bytes(), "image/jpeg", {"Cache-Control": "max-age=31536000"})
 
 
+def post_discord(h):
+    b = h.body()
+    h.send(200, link_discord(str(b.get("url", "")), str(b.get("address", ""))))
+
+
 def post_treat(h):
     b = h.body()
     h.send(200, treat(str(b["id"]), int(b.get("remedy", 0))))
@@ -1906,7 +1940,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/another": post_another}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another}
 
 
 def main():

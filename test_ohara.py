@@ -819,9 +819,9 @@ class Http(Reading):
             self.assertEqual(self.call("POST", "/api/indexers", {"indexers": ["X"]})[0], 200)
         choose.assert_called_once_with(["X"])
         lighter = {"done": 0, "total": 3, "saved": 0}
-        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": False, "ribbon": True, "lighter": lighter})
+        self.assertEqual(json.loads(self.call("GET", "/api/settings")[2]), {"spines": "tome", "brook": True, "franky": False, "ribbon": True, "discord": False, "lighter": lighter})
         self.assertEqual(json.loads(self.call("POST", "/api/settings", {"spines": "sobre", "brook": False, "franky": False, "ribbon": False})[2]),
-                         {"spines": "sobre", "brook": False, "franky": False, "ribbon": False, "lighter": lighter})
+                         {"spines": "sobre", "brook": False, "franky": False, "ribbon": False, "discord": False, "lighter": lighter})
         self.assertEqual(self.call("GET", "/api/crop?vol=Naruto/Naruto%20T01.cbz")[0], 404)
         ohara.read_spine(self.root / "Naruto" / "Naruto T01.cbz")
         with mock.patch.object(ohara, "warm") as warm:
@@ -1105,11 +1105,11 @@ class Robin(Library):
         self.assertEqual(ohara.load_state()["spines"], {})
 
     def test_spine_style_setting(self):
-        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": False, "ribbon": True})  # Franky waits to be asked
+        self.assertEqual(ohara.settings(), {"spines": "tome", "brook": True, "franky": False, "ribbon": True, "discord": False})  # Franky waits to be asked
         self.assertEqual(ohara.set_settings({"spines": "reliure", "franky": True})["spines"], "reliure")
-        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True, "discord": False})
         ohara.set_settings({"spines": "neon", "brook": "yes", "franky": "no", "ribbon": 0})
-        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True})
+        self.assertEqual(ohara.settings(), {"spines": "reliure", "brook": True, "franky": True, "ribbon": True, "discord": False})
 
 
 class Franky(Library):
@@ -1385,6 +1385,27 @@ class DenDen(Library):
         with mock.patch.object(d.threading.Thread, "start") as start:
             d.post("hook", {})
         start.assert_called_once()
+
+    def test_a_channel_linked_from_the_settings(self):
+        hook = "https://discord.com/api/webhooks/123/abc-DEF_9"
+        for wrong in ("http://discord.com/api/webhooks/1/a", "https://evil.example/api/webhooks/1/a", "nope"):
+            with self.assertRaises(ValueError):
+                ohara.link_discord(wrong)
+        with mock.patch.object(ohara.den_den, "send", side_effect=OSError("HTTP Error 404: Not Found")):
+            with self.assertRaises(OSError):  # Discord does not take it: not kept
+                ohara.link_discord(hook)
+        self.assertFalse(ohara.settings()["discord"])
+        with mock.patch.object(ohara.den_den, "send") as send:
+            self.assertTrue(ohara.link_discord(" " + hook + " ", "http://dpi.local:8585/")["discord"])
+        self.assertEqual(send.call_args.args[1]["embeds"][0]["title"], "Ohara est relié à ce salon")
+        self.assertEqual(ohara.discord(), (hook, "http://dpi.local:8585"))
+        with mock.patch.object(ohara.den_den, "send") as send:
+            Http.call(self, "POST", "/api/discord", {"url": ""})  # unlinked
+        send.assert_not_called()
+        self.assertEqual(ohara.discord(), ("", "http://dpi.local:8585"))
+        with mock.patch.object(ohara, "DISCORD_WEBHOOK", "env-hook"):
+            self.assertEqual(ohara.discord()[0], "env-hook")
+        self.assertEqual(ohara.den_den.linked("en")["embeds"][0]["title"], "Ohara is linked to this channel")
 
     def test_ohara_tells_the_tomes_come_in_and_those_following_finds(self):
         told = []

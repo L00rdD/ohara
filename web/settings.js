@@ -23,6 +23,7 @@ const Settings = (() => {
       el("h3", "", W().lecternTitle), settingSwitch("ribbon", W().ribbonSetting, (st) => ctx.setRibbon(st.ribbon)),
       el("h3", "", W().music), el("p", "note", W().brookHint), brookSwitch(),
       el("h3", "", W().lighterTitle), el("p", "note", W().frankyHint), ...frankySwitch(),
+      el("h3", "", "Discord"), el("p", "note", W().discordHint), discordBox(),
       indexersBox(list));
     sheet.hidden = false;
     try {
@@ -99,6 +100,43 @@ const Settings = (() => {
   }
 
   const brookSwitch = () => settingSwitch("brook", W().brookSetting);
+
+  // a Discord channel told when tomes come in: its webhook pasted, tried at once
+  function discordBox() {
+    const box = el("div", "discord-box");
+    const said = el("p", "note");
+    const form = el("form", "decor-link");
+    const input = el("input");
+    input.type = "url";
+    input.placeholder = "https://discord.com/api/webhooks/…";
+    const go = button(W().discordLink, "button", null);
+    go.type = "submit";
+    form.append(input, go);
+    const off = button(W().discordUnlink, "button quiet", () => link(""));
+    const show = (st) => {
+      said.className = st.discord ? "done-note" : "note";
+      said.textContent = st.discord ? W().discordLinked : W().discordNone;
+      off.hidden = !st.discord;
+    };
+    async function link(url) {
+      said.className = "note";
+      said.textContent = url ? W().discordTrying : "";
+      try {
+        show(await api("/api/discord", { url, address: location.origin }));
+        input.value = "";
+      } catch (err) {
+        said.className = "error";
+        said.textContent = W().discordErrors(err.message);
+      }
+    }
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      link(input.value);
+    };
+    api("/api/settings").then(show, () => {});
+    box.append(form, said, off);
+    return box;
+  }
 
   // Franky, and how far he has gone through the library
   function frankySwitch() {
