@@ -301,11 +301,13 @@ const Words = (() => {
   }
 
   // what the card of a place selected on a shelf offers: a volume can be read, marked
-  // read (or back to unread when it is read) and lead to its series' sheet; a missing
+  // read unless it is, back to unread once started or read, and lead to its series'
+  // sheet; a missing
   // tome only to the sheet, where it can be fetched
   function selectionActions(place) {
     if (!place.vol) return ["sheet"];
-    return ["open", place.vol.done ? "markUnread" : "markRead", "sheet"];
+    const v = place.vol;
+    return ["open", ...(v.done ? [] : ["markRead"]), ...(v.done || v.pages ? ["markUnread"] : []), "sheet"];
   }
 
   // the lantern's glass filled from y 34 (empty) up to y 10 (full); never quite empty while it burns

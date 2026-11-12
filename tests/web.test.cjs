@@ -284,7 +284,8 @@ test("the lectern moves on to the next volume once one is finished", () => {
 });
 
 test("what the card of a place selected on a shelf offers", () => {
-  assert.deepEqual(Ohara.selectionActions({ vol: { done: false, pages: 3 } }), ["open", "markRead", "sheet"]);
+  assert.deepEqual(Ohara.selectionActions({ vol: { done: false, pages: 3 } }), ["open", "markRead", "markUnread", "sheet"]);
+  assert.deepEqual(Ohara.selectionActions({ vol: { done: false } }), ["open", "markRead", "sheet"]);
   assert.deepEqual(Ohara.selectionActions({ vol: { done: true } }), ["open", "markUnread", "sheet"]);
   assert.deepEqual(Ohara.selectionActions({ gap: 4 }), ["sheet"]);
 });
