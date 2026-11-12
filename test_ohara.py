@@ -291,7 +291,8 @@ class AniList(Library):
     def test_refresh_meta_for_the_library(self):
         cbz(self.root / "Frieren" / "T1.cbz", ["1.png"])
         cbz(self.root / "Unknown" / "T1.cbz", ["1.png"])
-        ohara.save_state({"downloads": {"H": {"series": "Naruto"}}, "lookups": {"old": {"id": 1}}})
+        ohara.save_state({"downloads": {"H": {"series": "Naruto"}, "C": {"series": "Bleach"}}, "lookups": {"old": {"id": 1}, "bleach": {"id": 9, "banner": None, "names": []}},
+                          "series": {"Naruto": {"anilist": None}, "Bleach": {"anilist": None}}})
         cbz(self.root / "Old" / "T1.cbz", ["1.png"])
         with mock.patch.object(ohara, "anilist_fetch", side_effect=lambda n: {"id": 5} if n == "Frieren" else {"id": 7} if n == "Naruto" else {}):
             ohara.refresh_meta()
@@ -300,6 +301,8 @@ class AniList(Library):
         self.assertNotIn("Unknown", state["series"])
         self.assertEqual(state["lookups"]["unknown"], {})
         self.assertEqual(state["lookups"]["naruto"], {"id": 7})
+        self.assertEqual(state["series"]["Naruto"]["anilist"], 7)  # an empty id is filled
+        self.assertEqual(state["series"]["Bleach"]["anilist"], 9)  # from an answer kept from before too
         self.assertEqual(state["lookups"]["old"], {})
 
 

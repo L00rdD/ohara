@@ -1386,7 +1386,8 @@ def delete_volume(vid):
 
 
 def refresh_meta():
-    """Asks AniList about the series of the library it has not been asked about yet."""
+    """Asks AniList about the series of the library it has not been asked about yet, and
+    notes on each series the AniList entry it is (an empty one filled, one set kept)."""
     state = load_state()
     names = set(library_names()) | {d["series"] for d in state["downloads"].values()}
     stale = lambda n: norm(n) not in state["lookups"] or not fresh(state["lookups"][norm(n)], n)
@@ -1394,9 +1395,10 @@ def refresh_meta():
     found = lookups(missing)
 
     def keep(state):
-        for name, meta in found.items():
-            if meta.get("id"):
-                series_entry(state, name).setdefault("anilist", meta["id"])
+        for name in sorted(names):
+            meta = found.get(name) or state["lookups"].get(norm(name)) or {}
+            if meta.get("id") and not state["series"].get(name, {}).get("anilist"):
+                series_entry(state, name)["anilist"] = meta["id"]
     update_state(keep)
 
 
