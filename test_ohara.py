@@ -727,6 +727,7 @@ class Reading(Library):
         folder.mkdir(parents=True)
         (folder / "b.webm").write_bytes(b"webm")
         (folder / "c.svg").write_text("<svg/>")
+        (folder / "._c.svg").write_bytes(b"left by macOS")
         (folder / "a.MP4").write_bytes(bytes(range(50)))
         (folder / "notes.txt").write_text("not a video")
         (folder / "old.mp4").mkdir()

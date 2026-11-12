@@ -2031,7 +2031,8 @@ def eyecatches(series):
     folder = eyecatch_folder(series)
     if not folder.is_dir():
         return []
-    return sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in EYECATCH_TYPES)
+    return sorted(p.name for p in folder.iterdir()
+                  if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in EYECATCH_TYPES)
 
 
 def save_progress(vid, page, count, rid=None):
