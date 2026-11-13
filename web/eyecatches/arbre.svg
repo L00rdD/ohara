@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <!-- Ohara's own eyecatch: the Tree of Knowledge grows, its leaves come out -->
+  <style>
+    .wood { stroke-dasharray: 400; stroke-dashoffset: 400; animation: grow 1.6s ease-out forwards; }
+    .b1 { animation-delay: .9s; } .b2 { animation-delay: 1.1s; } .b3 { animation-delay: 1.3s; } .b4 { animation-delay: 1.5s; }
+    @keyframes grow { to { stroke-dashoffset: 0; } }
+    .leaf { transform-box: fill-box; transform-origin: center; animation: open .7s cubic-bezier(.3,1.6,.5,1) both; }
+    @keyframes open { from { transform: scale(0); opacity: 0; } }
+    .name { font: italic 40px Georgia, serif; fill: #c9a46a; letter-spacing: 6px; animation: show 1s 3.2s both; }
+    @keyframes show { from { opacity: 0; } }
+    .mote { animation: float 4.5s linear infinite; }
+    @keyframes float { from { transform: translateY(0); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(-120px); opacity: 0; } }
+  </style>
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="30%" r="70%"><stop offset="0" stop-color="#3e5a3a"/><stop offset="1" stop-color="#121a10"/></radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="url(#sky)"/>
+  <ellipse cx="320" cy="332" rx="210" ry="18" fill="#0b0f08" opacity=".7"/>
+  <g fill="none" stroke="#6b4521" stroke-linecap="round">
+    <path class="wood" stroke-width="34" d="M320 330 C318 290 326 255 320 200"/>
+    <path class="wood b1" stroke-width="14" d="M320 220 C290 200 250 190 210 160"/>
+    <path class="wood b2" stroke-width="14" d="M322 210 C350 190 390 185 430 150"/>
+    <path class="wood b3" stroke-width="10" d="M320 200 C310 170 300 140 290 110"/>
+    <path class="wood b4" stroke-width="10" d="M322 200 C335 170 350 140 365 112"/>
+  </g>
+  <g fill="#5f8a45">
+    <circle class="leaf" style="animation-delay:1.9s" cx="205" cy="150" r="52"/>
+    <circle class="leaf" style="animation-delay:2.0s" cx="435" cy="140" r="56"/>
+    <circle class="leaf" style="animation-delay:2.1s" cx="285" cy="100" r="58"/>
+    <circle class="leaf" style="animation-delay:2.2s" cx="370" cy="98" r="58"/>
+    <circle class="leaf" style="animation-delay:2.3s" cx="325" cy="62" r="50"/>
+  </g>
+  <g fill="#86b05c">
+    <circle class="leaf" style="animation-delay:2.4s" cx="190" cy="135" r="24"/>
+    <circle class="leaf" style="animation-delay:2.5s" cx="420" cy="120" r="26"/>
+    <circle class="leaf" style="animation-delay:2.6s" cx="300" cy="78" r="26"/>
+    <circle class="leaf" style="animation-delay:2.7s" cx="355" cy="72" r="24"/>
+  </g>
+  <rect x="306" y="250" width="28" height="36" rx="12" fill="#2a1a0e" stroke="#c9a46a" stroke-width="2"/>
+  <g fill="#f6b95a">
+    <circle class="mote" cx="250" cy="320" r="2.5" style="animation-delay:.2s"/>
+    <circle class="mote" cx="400" cy="330" r="2" style="animation-delay:1.2s"/>
+    <circle class="mote" cx="330" cy="300" r="2" style="animation-delay:2.2s"/>
+  </g>
+  <text class="name" x="320" y="388" text-anchor="middle">Ohara</text>
+</svg>

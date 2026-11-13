@@ -719,7 +719,7 @@ class Reading(Library):
     def test_volume_pages_and_next_readable(self):
         ohara.save_progress("Naruto/Naruto T02.cbz", 1, 2)
         info = ohara.volume_pages("Naruto/Naruto T02.cbz")
-        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "rtl": True, "count": 2, "wide": None, "page": 1, "next": "Naruto/Naruto T04.cbz", "eyecatches": []})
+        self.assertEqual(info, {"id": "Naruto/Naruto T02.cbz", "series": "Naruto", "label": "Tome 2", "number": 2.0, "chapter": False, "rtl": True, "count": 2, "wide": None, "page": 1, "next": "Naruto/Naruto T04.cbz", "eyecatches": ["arbre.svg", "lanterne.svg", "livre.svg"]})
         self.assertIsNone(ohara.volume_pages("Naruto/Naruto T04.cbz")["next"])
 
     def test_the_eyecatches_of_a_series_and_their_streaming(self):
@@ -732,7 +732,7 @@ class Reading(Library):
         (folder / "notes.txt").write_text("not a video")
         (folder / "old.mp4").mkdir()
         self.assertEqual(ohara.volume_pages("Naruto/Naruto T02.cbz")["eyecatches"], ["a.MP4", "b.webm", "c.svg"])
-        self.assertEqual(ohara.eyecatches("Bleach"), [])
+        self.assertEqual(ohara.eyecatches("Bleach"), ["arbre.svg", "lanterne.svg", "livre.svg"])
         fake = Http("test_log_is_quiet")
         fake.root = self.root
         code, head, body = fake.call_range("/api/eyecatch?series=Naruto&name=a.MP4", "bytes=10-19")
@@ -742,7 +742,59 @@ class Reading(Library):
         self.assertIn("image/svg+xml", fake.call("GET", "/api/eyecatch?series=Naruto&name=c.svg")[1])
         self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=notes.txt")[0], 404)
         self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=../../state.json")[0], 404)
-        self.assertEqual(json.loads(fake.call("GET", "/api/eyecatches?series=Naruto")[2]), ["a.MP4", "b.webm", "c.svg"])
+        self.assertEqual(json.loads(fake.call("GET", "/api/eyecatches?series=Naruto")[2]), {"names": ["a.MP4", "b.webm", "c.svg"], "own": True})
+
+    def test_a_series_without_eyecatches_gets_the_generic_ones(self):
+        fake = Http("test_log_is_quiet")
+        fake.root = self.root
+        self.assertEqual(json.loads(fake.call("GET", "/api/eyecatches?series=Naruto")[2]), {"names": ["arbre.svg", "lanterne.svg", "livre.svg"], "own": False})
+        code, head, body = fake.call("GET", "/api/eyecatch?series=Naruto&name=livre.svg")
+        self.assertEqual(code, 200)
+        self.assertIn("image/svg+xml", head)
+        self.assertTrue(body.startswith(b"<svg"))
+        generic = self.root / ".ohara" / "eyecatches"
+        (generic / "Naruto").mkdir(parents=True)
+        (generic / "Naruto" / "notes.txt").write_text("not an eyecatch")
+        (generic / "open.webm").write_bytes(b"webm")
+        (generic / "._open.webm").write_bytes(b"left by macOS")
+        self.assertEqual(ohara.eyecatches("Naruto"), ["open.webm"])
+        self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=open.webm")[:3:2], (200, b"webm"))
+        self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=livre.svg")[0], 404)
+        (generic / "Naruto" / "own.mp4").write_bytes(b"mp4")
+        self.assertEqual(ohara.eyecatches("Naruto"), ["own.mp4"])
+        self.assertEqual(ohara.eyecatches("Bleach"), ["open.webm"])
+
+    def test_volumes_added_by_hand(self):
+        fake = Http("test_log_is_quiet")
+        fake.root = self.root
+        with mock.patch.object(ohara.threading, "Thread") as meta:
+            code, _, body = fake.call("POST", "/api/add?series=Naruto&name=Naruto%20T05.zip", b"PK-zip")
+            self.assertEqual((code, json.loads(body)), (200, {"series": "Naruto", "id": "Naruto/Naruto T05.cbz"}))
+            fake.call("POST", "/api/add?series=Naruto&name=Naruto%20T05.zip", b"again")
+            self.assertTrue((self.root / "Naruto" / "Naruto T05 (2).cbz").exists())
+            meta.assert_not_called()
+            code, _, body = fake.call("POST", "/api/add?series=../Frieren:%20new&name=..%2F..%2FFrieren%20T01.pdf", b"%PDF")
+            self.assertEqual(json.loads(body), {"series": "Frieren new", "id": "Frieren new/Frieren T01.pdf"})
+            self.assertEqual((self.root / "Frieren new" / "Frieren T01.pdf").read_bytes(), b"%PDF")
+            meta.assert_called_once_with(target=ohara.refresh_meta, daemon=True)
+        self.assertEqual(fake.call("POST", "/api/add?series=Naruto&name=notes.txt", b"x")[0], 502)
+        self.assertEqual(fake.call("POST", "/api/add?series=Naruto&name=.hidden.cbz", b"x")[0], 502)
+        self.assertEqual(fake.call("POST", "/api/add?series=%20&name=a.cbz", b"x")[0], 404)
+        self.assertEqual([p.name for p in (self.root / ".incoming").iterdir()], [])
+
+    def test_a_volume_cut_short_never_reaches_the_shelves(self):
+        with self.assertRaises(ValueError):
+            ohara.add_volume("Naruto", "Naruto T09.cbz", io.BytesIO(b"half"), 10)
+        self.assertFalse((self.root / "Naruto" / "Naruto T09.cbz").exists())
+        self.assertEqual([p.name for p in (self.root / ".incoming").iterdir()], [])
+
+    def test_the_series_volumes_sent_seem_to_be_of(self):
+        self.assertEqual(ohara.shelf_for("naruto - Tome 12 [FR].cbz"), {"name": "Naruto", "known": True})
+        self.assertEqual(ohara.shelf_for("Sousou no Frieren v01.cbz"), {"name": "Sousou no Frieren", "known": False})
+        self.assertEqual(ohara.shelf_for("One.Piece"), {"name": "One Piece", "known": False})
+        fake = Http("test_log_is_quiet")
+        fake.root = self.root
+        self.assertEqual(json.loads(fake.call("GET", "/api/shelf?name=NARUTO")[2]), {"name": "Naruto", "known": True})
 
     def test_the_size_of_a_page_from_its_first_bytes(self):
         from PIL import Image

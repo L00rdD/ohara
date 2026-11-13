@@ -108,6 +108,18 @@ Tree of Knowledge.
   background and keeps it in memory, so turning a page does not wait on the network;
   near the end, the next volume gets ready. A page shows only once it is whole, the
   one before stays until then.
+- **Eyecatches.** Between two volumes, as between the two halves of an episode of the
+  anime, an eyecatch plays while the next volume opens: a short video or an animated
+  drawing (SVG) put in `.ohara/eyecatches/<Series>/`, each in turn, a click cutting it
+  short; a series' sheet shows them all. A series without its own takes the generic
+  ones put in `.ohara/eyecatches/` itself, or else Ohara's own three drawings (a book
+  turning its pages, the Tree of Knowledge growing, a lantern lighting up).
+- **Adding volumes by hand.** Drop files (CBZ, ZIP, CBR, CB7, PDF, EPUB) or folders on
+  the library, or choose them from the ＋ in the header or *Ajouter des tomes* on a
+  series' sheet. Each lot (the loose files, and each folder) goes into one of the
+  library's series, guessed from its names, or into a new one you name, so a folder per
+  series adds several at once; dropped on a series' bay or its sheet, they go to that
+  series. They are filed as a download is (`.zip` becomes `.cbz`, `.cbr` is converted).
 - **Franky, the shipwright.** In the background, one volume after the other, Franky
   remakes each `.cbz`'s pages in WebP at quality 85, at their own size: the difference
   does not show, the room saved does (about 40 % on a black and white series). A few
@@ -193,7 +205,8 @@ volumes, the downloads under way and the volume being read (by the only reader, 
 one its `ohara-reader` cookie names), for a dashboard card.
 The page itself uses `/api/search`, `/api/library`, `/api/grab`, `/api/complete`,
 `/api/follow`, `/api/pages`, `/api/page`, `/api/cover`, `/api/file`,
-`/api/progress`, `/api/read`, `/api/readers` and `/api/cancel`; those about reading
+`/api/progress`, `/api/read`, `/api/readers`, `/api/add` (a volume sent by hand, its
+bytes as the body), `/api/shelf` and `/api/cancel`; those about reading
 answer 401 when, among several readers, the `ohara-reader` cookie names none.
 
 ## Development
@@ -207,7 +220,8 @@ lighter), `chapters.py` (the chapters of each volume, from Wikipedia), `chopper.
 `ailments_*.py` (what ails the library, and the remedies), `den_den.py` (Discord), `brook.py` (which soundtrack,
 and the titles of its tracks), `ui.js`, `search.js` and `settings.js` (the drawer of
 the search and the settings), `music.js` and `player.js` (the reader's music), `sheet.js` (a series' sheet),
-`reader.js` (the reader).
+`adding.js` (volumes added by hand), `eyecatch.js` (the eyecatches, Ohara's own in
+`web/eyecatches/`), `reader.js` (the reader).
 
 ```bash
 python3 -m unittest test_ohara.py   # the server, without Prowlarr, Transmission or a socket

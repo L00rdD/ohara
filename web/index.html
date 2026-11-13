@@ -24,6 +24,7 @@
       <button class="round reader-switch" id="open-readers" type="button" hidden></button>
       <button class="round flag" id="flag" type="button"></button>
       <button class="round doctor quiet" id="open-ailments" type="button">🩺<span class="count" id="ailments-count"></span></button>
+      <button class="round" id="open-adding" type="button">＋</button>
       <button class="round" id="open-contents" type="button">≡</button>
       <button class="round" id="open-settings" type="button">⚙</button>
     </header>
@@ -61,6 +62,8 @@
   <section class="sheet small" id="settings" hidden></section>
   <section class="readers" id="readers" hidden></section>
   <section class="sheet small" id="ailments" hidden></section>
+  <section class="sheet small" id="adding" hidden></section>
+  <div class="drop-veil" id="drop-veil" hidden><p data-w="addDrop"></p></div>
 
   <script src="/i18n.js"></script>
   <script src="/ui.js"></script>
@@ -71,6 +74,7 @@
   <script src="/chopper.js"></script>
   <script src="/eyecatch.js"></script>
   <script src="/sheet.js"></script>
+  <script src="/adding.js"></script>
   <script src="/readers.js"></script>
   <script src="/settings.js"></script>
   <script src="/library.js"></script>

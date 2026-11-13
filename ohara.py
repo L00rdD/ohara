@@ -607,18 +607,71 @@ def import_download(source, series):
     count = 0
     files = sorted((p for p in source.rglob("*") if p.is_file()), key=lambda p: natural(str(p)))
     for p in files:
-        ext = p.suffix.lower()
-        if ext not in KEPT + ARCHIVES or volume_number(p.name) in owned:
+        if p.suffix.lower() not in KEPT + ARCHIVES or volume_number(p.name) in owned:
             continue
-        name = p.name if ext in (".cbz", ".pdf", ".epub") else p.stem + ".cbz"
-        if ext in ARCHIVES:
-            unpack_archive(p, free_name(dest, name))
-        else:
-            shutil.move(str(p), free_name(dest, name))
+        file_volume(p, dest)
         count += 1
     if not count and not any(p.suffix.lower() in KEPT + ARCHIVES for p in files):
         count = import_image_folders(source, dest)
     return count
+
+
+def file_volume(p, dest):
+    """Files one volume into dest under a name not taken: a .zip becomes a .cbz, a
+    .cbr/.cb7 is converted. Returns where it went."""
+    ext = p.suffix.lower()
+    target = free_name(dest, p.name if ext in (".cbz", ".pdf", ".epub") else p.stem + ".cbz")
+    if ext in ARCHIVES:
+        unpack_archive(p, target)
+    else:
+        shutil.move(str(p), target)
+    return target
+
+
+# ---------- adding by hand: volumes sent from the computer or the phone ----------
+
+def received(body, size, out):
+    """Writes the size bytes of a request's body to out, a megabyte at a time."""
+    with out.open("wb") as f:
+        left = size
+        while left > 0:
+            chunk = body.read(min(1 << 20, left))
+            if not chunk:
+                raise ValueError("cut short")
+            f.write(chunk)
+            left -= len(chunk)
+
+
+def add_volume(series, name, body, size):
+    """A volume sent by hand, filed in its series' folder as a download is; a series
+    not in the library yet is made, and AniList asked about it. It comes into a hidden
+    folder of .incoming first, so a volume cut short never reaches the shelves."""
+    name, series = Path(name).name, safe_name(series)
+    if Path(name).suffix.lower() not in KEPT + ARCHIVES or name.startswith("."):
+        raise ValueError("not a volume")
+    new = series not in library_names()
+    work = INCOMING / f".added-{secrets.token_hex(6)}"
+    work.mkdir(parents=True)
+    try:
+        part = work / safe_name(name)
+        received(body, size, part)
+        dest = MANGA / series
+        dest.mkdir(parents=True, exist_ok=True)
+        target = file_volume(part, dest)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if new:
+        threading.Thread(target=refresh_meta, daemon=True).start()
+    return {"series": series, "id": volume_id(target)}
+
+
+def shelf_for(name):
+    """The series a file or a folder sent seems to be of, by its name: one of the
+    library's when it says so ("known"), else the name of a new one."""
+    stem = Path(name).stem if Path(name).suffix.lower() in KEPT + ARCHIVES else name
+    guess = safe_name(guess_series(stem))
+    known = {norm(n): n for n in library_names()}
+    return {"name": known.get(norm(guess), guess), "known": norm(guess) in known}
 
 
 def import_image_folders(source, dest):
@@ -2024,15 +2077,25 @@ def eyecatch_folder(series):
     return STATE_DIR / "eyecatches" / safe_name(series)
 
 
-def eyecatches(series):
-    """The videos and animated drawings played between two volumes of a series, as the
-    anime's eyecatch between the two halves of an episode: those put in
-    .ohara/eyecatches/<series>/."""
-    folder = eyecatch_folder(series)
+def eyecatch_files(folder):
+    """The eyecatches in a folder, by name; not its folders nor its hidden files."""
     if not folder.is_dir():
-        return []
-    return sorted(p.name for p in folder.iterdir()
-                  if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in EYECATCH_TYPES)
+        return {}
+    return {p.name: p for p in folder.iterdir()
+            if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in EYECATCH_TYPES}
+
+
+def eyecatch_paths(series):
+    """The videos and animated drawings played between two volumes of a series, as the
+    anime's eyecatch between the two halves of an episode, by name: those put in
+    .ohara/eyecatches/<series>/; for a series without any, the generic ones put in
+    .ohara/eyecatches/ itself, or else Ohara's own (web/eyecatches)."""
+    return (eyecatch_files(eyecatch_folder(series)) or eyecatch_files(STATE_DIR / "eyecatches")
+            or eyecatch_files(WEB / "eyecatches"))
+
+
+def eyecatches(series):
+    return sorted(eyecatch_paths(series))
 
 
 def save_progress(vid, page, count, rid=None):
@@ -2307,10 +2370,17 @@ def send_file(h, path, ctype):
 
 def get_eyecatch(h):
     q = h.query()
-    if q["name"] not in eyecatches(q["series"]):
+    path = eyecatch_paths(q["series"]).get(q["name"])
+    if not path:
         raise KeyError(q["name"])
-    path = eyecatch_folder(q["series"]) / q["name"]
     send_file(h, path, EYECATCH_TYPES[path.suffix.lower()])
+
+
+def post_add(h):
+    q = h.query()
+    if not q.get("series", "").strip():
+        raise KeyError("series")
+    h.send(200, add_volume(q["series"], q["name"], h.rfile, int(h.headers.get("Content-Length") or 0)))
 
 
 def get_track(h):
@@ -2386,7 +2456,9 @@ GET_ROUTES = {
     "/api/cover": get_cover,
     "/api/decor": get_decor,
     "/api/eyecatch": get_eyecatch,
-    "/api/eyecatches": lambda h: h.send(200, eyecatches(h.query()["series"])),
+    "/api/eyecatches": lambda h: h.send(200, {"names": eyecatches(h.query()["series"]),
+                                              "own": bool(eyecatch_files(eyecatch_folder(h.query()["series"])))}),
+    "/api/shelf": lambda h: h.send(200, shelf_for(h.query()["name"])),
     "/api/ailments": lambda h: h.send(200, ailments(fresh=h.query().get("fresh") == "1")),
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,
@@ -2397,7 +2469,7 @@ GET_ROUTES = {
     "/api/settings": lambda h: h.send(200, settings_page()),
     "/api/status.json": lambda h: h.send(200, status(h.reader()), extra={"Access-Control-Allow-Origin": "*"}),
 }
-POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/webtoon": post_webtoon, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another, "/api/readers": post_readers}
+POST_ROUTES = {"/api/grab": post_grab, "/api/follow": post_follow, "/api/webtoon": post_webtoon, "/api/complete": post_complete, "/api/progress": post_progress, "/api/indexers": post_indexers, "/api/settings": post_settings, "/api/music": post_music, "/api/mood": post_mood, "/api/read": post_read, "/api/decor": post_decor, "/api/decor/image": post_decor_image, "/api/ailments/treat": post_treat, "/api/ailments/dismiss": post_dismiss, "/api/cancel": post_cancel, "/api/discord": post_discord, "/api/another": post_another, "/api/readers": post_readers, "/api/add": post_add}
 
 
 def main():

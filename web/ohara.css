@@ -392,3 +392,16 @@ button { font: inherit; color: inherit; }
 .eyecatch video, .eyecatch img { width: 100%; height: 100%; object-fit: contain; }
 .eyecatch .close { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 1; }
 @keyframes eyecatch { from { opacity: 0; } }
+
+/* ---------- volumes added by hand (adding.js) ---------- */
+.lot { margin: 18px 0 0; padding: 6px 16px 10px; border: 1px solid rgba(244,232,204,.15); border-radius: 14px; }
+.lot legend { padding: 0 6px; font: 600 20px/1 var(--display); }
+.lot .lot-files { margin: 4px 0 6px; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lot .option { flex-wrap: wrap; }
+.lot select, .lot input:not([type]) { flex: 1; min-width: 160px; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(244,232,204,.25); background: rgba(40,25,14,.9); color: var(--text); font: inherit; }
+#adding > .button.main { margin-top: 20px; }
+.lot-progress .lot-sending { display: grid; grid-template-columns: 1fr 120px; gap: 12px; align-items: center; margin: 8px 0; font-size: 14px; }
+.lot-progress .lot-sending span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lot-progress .lot-sending.done span::after { content: " ✓"; color: var(--leaf); }
+.drop-veil { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; pointer-events: none; background: rgba(20,12,6,.55); outline: 3px dashed var(--lantern); outline-offset: -18px; animation: fade .15s; }
+.drop-veil p { padding: 16px 26px; border-radius: 999px; background: rgba(40,25,14,.95); font: italic 24px var(--display); }

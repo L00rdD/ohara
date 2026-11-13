@@ -1,7 +1,8 @@
 // A series' sheet: its cover and facts, how much of it is read, the button to read
 // on, following (as a webtoon: by chapters, in English), the missing tomes, its music (Brook), and every volume with what
 // can be done with its reading (mark read, read up to here, back to unread), the
-// back of its shelves, and its eyecatches to see.
+// back of its shelves, its eyecatches to see (Ohara's own when it has none), and more
+// volumes to add by hand.
 const Sheet = (() => {
   const { $, el, button, twice, bar, api } = UI;
   const W = () => I18n.words();
@@ -222,11 +223,11 @@ const Sheet = (() => {
   // the series' eyecatches, played between two volumes, all to be seen here
   function eyecatchBox(s) {
     const box = el("div", "eyecatch-box");
-    api("/api/eyecatches?series=" + encodeURIComponent(s.name)).then((names) => {
+    api("/api/eyecatches?series=" + encodeURIComponent(s.name)).then(({ names, own }) => {
       if (!names.length) return;
       const acts = el("div", "actions");
       acts.append(button(W().eyecatchSee(names.length), "button", () => Eyecatch.reel(s.name, names)));
-      box.append(el("h3", "", W().eyecatchTitle), el("p", "note", W().eyecatchNote), acts);
+      box.append(el("h3", "", W().eyecatchTitle), el("p", "note", own ? W().eyecatchNote : W().eyecatchGeneric), acts);
     }, () => {});
     return box;
   }
@@ -259,7 +260,7 @@ const Sheet = (() => {
     img.src = s.meta.cover || coverUrl(s.volumes[0].id);
     const text = el("div");
     const acts = el("div", "actions");
-    acts.append(read, seriesSwitch(s, "follow", W().followSeries, W().followHint), seriesSwitch(s, "webtoon", W().webtoonSeries, W().webtoonHint));
+    acts.append(read, button(W().addTo, "button", () => Adding.open([], s.name)), seriesSwitch(s, "follow", W().followSeries, W().followHint), seriesSwitch(s, "webtoon", W().webtoonSeries, W().webtoonHint));
     const facts = el("p", "facts");
     facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
     text.append(el("h2", "", s.name), facts, Doctor.forSeries(s.name), acts, progress(s), gaps(s), musicBox(s), decorBox(s), eyecatchBox(s));
@@ -267,6 +268,7 @@ const Sheet = (() => {
     const grid = el("div", "tomes");
     grid.append(...s.volumes.map((x) => tomeWithMenu(x, s)));
     sheet.replaceChildren(button("✕", "round close", () => ((shown = null), ctx.closeSheet(sheet))), head, grid);
+    sheet.dataset.series = s.name; // volumes dropped on the sheet go to its series
     sheet.hidden = false;
   }
 

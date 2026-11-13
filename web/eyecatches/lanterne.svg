@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+  <!-- Ohara's own eyecatch: a lantern lights up and swings, dust floating in its light -->
+  <style>
+    .swing { transform-origin: 320px 20px; transform-box: view-box; animation: swing 2.2s ease-in-out infinite alternate; }
+    @keyframes swing { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+    .fire { animation: light 1.4s .4s ease-out both, flicker .18s 1.8s infinite alternate; }
+    @keyframes light { from { opacity: 0; } }
+    @keyframes flicker { to { opacity: .82; } }
+    .halo { animation: halo 1.8s .5s ease-out both; }
+    @keyframes halo { from { opacity: 0; transform: scale(.4); } }
+    .halo { transform-box: fill-box; transform-origin: center; }
+    .mote { animation: float 4.5s linear infinite; }
+    @keyframes float { from { transform: translate(0, 0); opacity: 0; } 25% { opacity: .9; } to { transform: translate(18px, -140px); opacity: 0; } }
+    .name { font: italic 40px Georgia, serif; fill: #c9a46a; letter-spacing: 6px; animation: show 1s 3s both; }
+    @keyframes show { from { opacity: 0; } }
+  </style>
+  <defs>
+    <radialGradient id="warm"><stop offset="0" stop-color="#ffd68a" stop-opacity=".9"/><stop offset=".4" stop-color="#f6b95a" stop-opacity=".35"/><stop offset="1" stop-color="#f6b95a" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#1a0f07"/>
+  <circle class="halo" cx="320" cy="190" r="190" fill="url(#warm)"/>
+  <g class="swing">
+    <path d="M320 0 V95" stroke="#8a6a3e" stroke-width="3"/>
+    <path d="M290 95 h60 M320 82 v13" stroke="#c9a46a" stroke-width="6" fill="none"/>
+    <path d="M285 100 h70 l10 22 v120 l-10 22 h-70 l-10 -22 v-120 z" fill="#2a1a0e" stroke="#c9a46a" stroke-width="5"/>
+    <path class="fire" d="M288 124 h64 v116 h-64 z" fill="#f6b95a"/>
+    <path class="fire" d="M320 150 c18 28 18 52 0 70 c-18 -18 -18 -42 0 -70 z" fill="#fff4d6"/>
+    <path d="M320 100 v164 M285 182 h70" stroke="#c9a46a" stroke-width="3"/>
+  </g>
+  <g fill="#ffd68a">
+    <circle class="mote" cx="220" cy="300" r="2.5" style="animation-delay:.3s"/>
+    <circle class="mote" cx="430" cy="320" r="2" style="animation-delay:1s"/>
+    <circle class="mote" cx="380" cy="280" r="1.8" style="animation-delay:1.9s"/>
+    <circle class="mote" cx="260" cy="340" r="2" style="animation-delay:2.6s"/>
+  </g>
+  <text class="name" x="320" y="370" text-anchor="middle">Ohara</text>
+</svg>

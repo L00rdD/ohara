@@ -22,6 +22,7 @@ const Ohara = (() => {
     $("flag").title = I18n.get() === "fr" ? "English" : "Français";
     $("open-settings").title = W().settings;
     $("open-contents").title = W().contentsHint;
+    $("open-adding").title = W().addTitle;
     $("lectern-back").title = $("lectern-back").ariaLabel = W().lecternBack;
     $("open-ailments").title = W().ailmentsTitle;
     $("turn-left").title = W().turnLeft;
@@ -164,6 +165,7 @@ const Ohara = (() => {
       inner.append(ledge);
     }
     inner.onclick = () => openSeries(b.series, i);
+    inner.dataset.series = b.series.name; // volumes dropped here go to it
   }
 
   // a bay shared by small series: each on its own shelf, its name on a small plaque,
@@ -185,6 +187,7 @@ const Ohara = (() => {
         }
         ledge.append(label, ...row.map((p) => (p.vol ? spine(p.vol, s, readingId()) : hole(p, s, i))));
         ledge.onclick = () => openSeries(s, i);
+        ledge.dataset.series = s.name;
       }
       inner.append(ledge);
     });
@@ -296,7 +299,7 @@ const Ohara = (() => {
   // buttons open their own things
   function closeOutside(e) {
     if (e.target.closest(".top, #selection, .sheet")) return;
-    for (const id of ["series", "settings", "ailments"]) if (!$(id).hidden) closeSheet($(id));
+    for (const id of ["series", "settings", "ailments", "adding"]) if (!$(id).hidden) closeSheet($(id));
   }
 
   function drawInvitation(box) {
@@ -498,7 +501,7 @@ const Ohara = (() => {
   }
 
   function closeAll() {
-    for (const id of ["series", "settings", "ailments", "search", "downloads", "contents"]) $(id).hidden = true;
+    for (const id of ["series", "settings", "ailments", "adding", "search", "downloads", "contents"]) $(id).hidden = true;
     $("lantern").setAttribute("aria-expanded", "false");
   }
 
@@ -516,6 +519,8 @@ const Ohara = (() => {
     Search.init({ series: () => lib.series, reload: load });
     Sheet.init({ reload: load, closeSheet });
     $("open-contents").onclick = openContents;
+    Adding.init({ series: () => lib.series, reload: load, closeSheet });
+    $("open-adding").onclick = () => ($("adding").hidden ? Adding.open() : closeSheet($("adding")));
     api("/api/settings").then((st) => {
       spineStyle = st.spines;
       ribbon = st.ribbon;

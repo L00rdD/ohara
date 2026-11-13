@@ -452,3 +452,26 @@ test("who reads: asked among several, shown in the header once there are two", (
 test("the reader's cookie is kept for years, for the whole site", () => {
   assert.equal(Ohara.readerCookie("a b"), "ohara-reader=a%20b; max-age=315360000; path=/; samesite=lax");
 });
+
+test("volumes added by hand come in lots, one per folder, hidden files and others left out", () => {
+  const Adding = require("../web/adding.js");
+  assert.ok(Adding.isVolume("Frieren T01.CBZ"));
+  assert.ok(Adding.isVolume("Berserk v02.epub"));
+  assert.ok(!Adding.isVolume("._Frieren T01.cbz"));
+  assert.ok(!Adding.isVolume("cover.jpg"));
+  assert.equal(Adding.folderOf("Manga/Frieren/Frieren T01.cbz"), "Frieren");
+  assert.equal(Adding.folderOf("Frieren T01.cbz"), "");
+  assert.equal(Adding.folderOf(""), "");
+  const f = (name, folder = "") => ({ file: { name }, folder });
+  const lots = Adding.lots([f("T10.cbz", "Naruto"), f("T2.cbz", "Naruto"), f("notes.txt", "Naruto"), f("Bleach 01.pdf"), f("T1.cbz", "Frieren")]);
+  assert.deepEqual(lots.map((l) => [l.folder, l.files.map((x) => x.name)]), [["", ["Bleach 01.pdf"]], ["Frieren", ["T1.cbz"]], ["Naruto", ["T2.cbz", "T10.cbz"]]]);
+  assert.deepEqual(Adding.lots([f("readme.nfo")]), []);
+});
+
+test("every word of the adding sheet in both languages", () => {
+  const keys = Object.keys(I18n.WORDS.fr).filter((k) => k.startsWith("add") || k === "eyecatchGeneric");
+  assert.ok(keys.length > 10);
+  for (const k of keys) assert.ok(k in I18n.WORDS.en, k);
+  assert.equal(fr(() => I18n.words().addGo(3)), "Ajouter les 3 tomes");
+  assert.equal(en(() => I18n.words().addDone(1)), "1 volume added.");
+});
