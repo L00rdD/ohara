@@ -3,6 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const Reader = require("../web/reader.js");
 const Eyecatch = require("../web/eyecatch.js");
+const Swipe = require("../web/swipe.js");
 const Ohara = require("../web/words.js");
 const I18n = require("../web/i18n.js");
 
@@ -34,6 +35,32 @@ test("between two volumes, one of the series' eyecatches, drawn at random", () =
   assert.equal(Eyecatch.url("One Piece", ["a.mp4"], 1), "/api/eyecatch?series=One%20Piece&name=a.mp4");
   assert.ok(Eyecatch.isDrawing(Eyecatch.url("Naruto", ["shuriken.SVG"], 0)));
   assert.ok(!Eyecatch.isDrawing(Eyecatch.url("Naruto", ["svg.mp4"], 0)));
+});
+
+test("a swipe to the left turns forward, to the right back; a short, slow or upright one does nothing", () => {
+  assert.equal(Swipe.way(-120, 10, 200), "next");
+  assert.equal(Swipe.way(120, -10, 200), "prev");
+  assert.equal(Swipe.way(-30, 0, 100), null);
+  assert.equal(Swipe.way(-120, 100, 200), null);
+  assert.equal(Swipe.way(-120, 0, 1200), null);
+});
+
+test("a swipe on the pages turns them, and the click after it is not a tap", () => {
+  const on = {};
+  const el = { addEventListener: (type, fn) => (on[type] = fn) };
+  const turned = [];
+  const swipes = Swipe.watch(el, (w) => turned.push(w));
+  const finger = (x, y) => ({ clientX: x, clientY: y });
+  on.touchstart({ touches: [finger(500, 300)], timeStamp: 1000 });
+  on.touchend({ changedTouches: [finger(300, 310)], timeStamp: 1200 });
+  assert.deepEqual(turned, ["next"]);
+  assert.ok(swipes.justDone({ timeStamp: 1300 }));
+  assert.ok(!swipes.justDone({ timeStamp: 2000 }));
+  on.touchstart({ touches: [finger(100, 300), finger(200, 300)], timeStamp: 3000 }); // a pinch
+  on.touchend({ changedTouches: [finger(400, 300)], timeStamp: 3100 });
+  on.touchstart({ touches: [finger(100, 300)], timeStamp: 4000 });
+  on.touchend({ changedTouches: [finger(105, 300)], timeStamp: 4100 }); // a tap
+  assert.deepEqual(turned, ["next"]);
 });
 
 test("the right half turns to the next page, the left half back", () => {
