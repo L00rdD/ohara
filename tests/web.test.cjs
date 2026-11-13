@@ -37,6 +37,19 @@ test("between two volumes, one of the series' eyecatches, drawn at random", () =
   assert.ok(!Eyecatch.isDrawing(Eyecatch.url("Naruto", ["svg.mp4"], 0)));
 });
 
+test("each eyecatch in turn: none again before all were seen, the last not twice in a row", () => {
+  const names = ["a", "b", "c"];
+  let seen = [];
+  const order = [];
+  for (let i = 0; i < 3; i++) ({ name: order[i], seen } = Eyecatch.turn(names, seen, 0));
+  assert.deepEqual(order, ["a", "b", "c"]);
+  const again = Eyecatch.turn(names, seen, 0.99);
+  assert.equal(again.name, "b");
+  assert.deepEqual(again.seen, ["c", "b"]);
+  assert.deepEqual(Eyecatch.turn(["a"], ["a"], 0.5), { name: "a", seen: ["a"] });
+  assert.deepEqual(Eyecatch.turn(["a", "b"], ["gone", "a"], 0), { name: "b", seen: ["a", "b"] });
+});
+
 test("a swipe to the left turns forward, to the right back; a short, slow or upright one does nothing", () => {
   assert.equal(Swipe.way(-120, 10, 200), "next");
   assert.equal(Swipe.way(120, -10, 200), "prev");

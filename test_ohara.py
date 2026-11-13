@@ -742,6 +742,7 @@ class Reading(Library):
         self.assertIn("image/svg+xml", fake.call("GET", "/api/eyecatch?series=Naruto&name=c.svg")[1])
         self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=notes.txt")[0], 404)
         self.assertEqual(fake.call("GET", "/api/eyecatch?series=Naruto&name=../../state.json")[0], 404)
+        self.assertEqual(json.loads(fake.call("GET", "/api/eyecatches?series=Naruto")[2]), ["a.MP4", "b.webm", "c.svg"])
 
     def test_the_size_of_a_page_from_its_first_bytes(self):
         from PIL import Image

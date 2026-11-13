@@ -260,7 +260,7 @@ const Reader = (() => {
   // episode of the anime. It goes once it is over and the volume is there; a click
   // cuts it short.
   async function between() {
-    const url = Eyecatch.url(info.series, info.eyecatches, Math.random());
+    const url = Eyecatch.pick(info.series, info.eyecatches);
     const opening = openVolume(info.next);
     if (!url) return opening;
     const box = $("eyecatch");

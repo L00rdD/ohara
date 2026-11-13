@@ -2386,6 +2386,7 @@ GET_ROUTES = {
     "/api/cover": get_cover,
     "/api/decor": get_decor,
     "/api/eyecatch": get_eyecatch,
+    "/api/eyecatches": lambda h: h.send(200, eyecatches(h.query()["series"])),
     "/api/ailments": lambda h: h.send(200, ailments(fresh=h.query().get("fresh") == "1")),
     "/api/indexers": lambda h: h.send(200, indexers()),
     "/api/crop": get_crop,

@@ -386,3 +386,9 @@ button { font: inherit; color: inherit; }
 .reader-who small { color: var(--muted); }
 .reader-acts { display: flex; gap: 8px; }
 .reader-acts .button { padding: 6px 12px; font-size: 13px; }
+
+/* ---------- a series' eyecatches on show, from its sheet (eyecatch.js) ---------- */
+.eyecatch { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: #000; cursor: pointer; animation: eyecatch .25s ease-out; }
+.eyecatch video, .eyecatch img { width: 100%; height: 100%; object-fit: contain; }
+.eyecatch .close { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 1; }
+@keyframes eyecatch { from { opacity: 0; } }

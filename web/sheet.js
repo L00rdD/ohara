@@ -1,7 +1,7 @@
 // A series' sheet: its cover and facts, how much of it is read, the button to read
 // on, following (as a webtoon: by chapters, in English), the missing tomes, its music (Brook), and every volume with what
-// can be done with its reading (mark read, read up to here, back to unread), and the
-// back of its shelves.
+// can be done with its reading (mark read, read up to here, back to unread), the
+// back of its shelves, and its eyecatches to see.
 const Sheet = (() => {
   const { $, el, button, twice, bar, api } = UI;
   const W = () => I18n.words();
@@ -219,6 +219,18 @@ const Sheet = (() => {
     return box;
   }
 
+  // the series' eyecatches, played between two volumes, all to be seen here
+  function eyecatchBox(s) {
+    const box = el("div", "eyecatch-box");
+    api("/api/eyecatches?series=" + encodeURIComponent(s.name)).then((names) => {
+      if (!names.length) return;
+      const acts = el("div", "actions");
+      acts.append(button(W().eyecatchSee(names.length), "button", () => Eyecatch.reel(s.name, names)));
+      box.append(el("h3", "", W().eyecatchTitle), el("p", "note", W().eyecatchNote), acts);
+    }, () => {});
+    return box;
+  }
+
   // a volume with its ⋯ menu: mark read, read up to here, back to unread, its cover on
   // the back of the shelves
   function tomeWithMenu(v, s) {
@@ -250,7 +262,7 @@ const Sheet = (() => {
     acts.append(read, seriesSwitch(s, "follow", W().followSeries, W().followHint), seriesSwitch(s, "webtoon", W().webtoonSeries, W().webtoonHint));
     const facts = el("p", "facts");
     facts.append(...seriesFacts(s, s.meta).map((f) => el("span", "", f)));
-    text.append(el("h2", "", s.name), facts, Doctor.forSeries(s.name), acts, progress(s), gaps(s), musicBox(s), decorBox(s));
+    text.append(el("h2", "", s.name), facts, Doctor.forSeries(s.name), acts, progress(s), gaps(s), musicBox(s), decorBox(s), eyecatchBox(s));
     head.append(img, text);
     const grid = el("div", "tomes");
     grid.append(...s.volumes.map((x) => tomeWithMenu(x, s)));
