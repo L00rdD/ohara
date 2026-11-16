@@ -87,6 +87,11 @@ class Exams(unittest.TestCase):
         self.assertEqual([(r["kind"], r["risky"]) for r in found[0]["remedies"]], [("dl-file", False), ("dl-cancel", True)])
         self.assertIn("n'a pas été rangé", found[0]["text"]["fr"])
 
+    def test_a_seeding_torrents_folder_is_no_leftover(self):
+        s = snap([], {}, incoming=["seeding", "old one"])
+        s["state"]["seeding"] = {"H": {"title": "t", "folder": "seeding", "ratio": 1.0, "since": NOW}}
+        self.assertEqual(ids(dl.leftovers(s)), ["dl-leftover:old one"])
+
     def test_leftovers_in_incoming(self):
         s = snap([], {"A": entry(0, folder="abc"), "B": {"series": "x", "title": "t"}}, incoming=["abc", "old one", "ost-9"])
         found = dl.leftovers(s)

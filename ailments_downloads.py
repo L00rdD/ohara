@@ -122,7 +122,8 @@ def unfiled(snap):
 
 @chopper.exam
 def leftovers(snap):
-    waited = {d.get("folder") for d in snap["state"]["downloads"].values()}
+    # a filed torrent still seeding keeps its folder too
+    waited = {d.get("folder") for d in [*snap["state"]["downloads"].values(), *snap["state"].get("seeding", {}).values()]}
     found = []
     for name in snap["incoming"]:
         if name in waited:
@@ -232,6 +233,7 @@ def cure_file(o, hash):
 @chopper.cure("dl-delete")
 def cure_delete(o, name):
     """Deletes a leftover of .incoming, unless a download has taken it meanwhile."""
-    if any(d.get("folder") == name for d in o.load_state()["downloads"].values()):
+    state = o.load_state()
+    if any(d.get("folder") == name for d in [*state["downloads"].values(), *state["seeding"].values()]):
         raise KeyError(f"a download waits for {name}")
     remove(o, name)

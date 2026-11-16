@@ -91,7 +91,11 @@ Tree of Knowledge.
   (*S1-2*), only one bigger than the last taken, as when a pack is uploaded again
   with more chapters.
 - **Filing.** When a download is done, the volumes go to `<library>/<Series>/` and the
-  torrent is removed (no seeding). Volumes already there are left out of a pack.
+  torrent is removed (no seeding). A torrent from a tracker that counts your ratio
+  (`OHARA_SEED_INDEXERS`, YggReborn by default) is filed by copy and goes on seeding
+  until `OHARA_SEED_RATIO`, or `OHARA_SEED_DAYS` at most, then is removed with its
+  copy; Transmission's own settings are left alone. Volumes already there are left
+  out of a pack.
   `.zip` becomes `.cbz`, `.cbr`/`.cb7` are converted with 7-Zip, a release of plain
   images becomes one `.cbz` per folder. PDF and EPUB open in the browser's viewer.
 - **Reading.** A click on the right half turns to the next page, on the left half
@@ -205,6 +209,9 @@ Windows and macOS): `docker-compose.yml` brings the three along.
 | `OHARA_PROWLARR_KEY` | | Prowlarr's API key. Without it, Ohara reads it from `OHARA_PROWLARR_CONFIG`. |
 | `OHARA_PROWLARR_CONFIG` | `/config/prowlarr/config.xml` | Prowlarr's `config.xml`, mounted read-only, if you prefer that to the key. |
 | `OHARA_INDEXERS` | `YggReborn,Nyaa.si,Knaben` | The Prowlarr indexers to search until some are ticked in the settings. |
+| `OHARA_SEED_INDEXERS` | `YggReborn` | The indexers whose torrents seed once filed, as their trackers ban those who only take. The others stop at once. |
+| `OHARA_SEED_RATIO` | `1` | How much they give back (uploaded / downloaded) before they are removed. |
+| `OHARA_SEED_DAYS` | `14` | They are removed after so many days anyway, ratio or not, not to fill the disk. |
 | `OHARA_TRANSMISSION_URL` | `http://transmission:9091/transmission/rpc` | |
 | `OHARA_TRANSMISSION_USER`, `OHARA_TRANSMISSION_PASSWORD` | | When Transmission asks for a login. |
 | `OHARA_TRANSMISSION_DIR` | `/data/manga/.incoming` | The library's `.incoming` folder as Transmission sees it. |

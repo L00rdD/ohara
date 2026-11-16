@@ -435,7 +435,7 @@ class Transmission(Library):
         with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H1"}}) as rpc, mock.patch.object(ohara, "lookup", return_value={}):
             done = ohara.grab("t1", "Naruto: Gaiden")
         self.assertEqual(done, {"series": "Naruto Gaiden", "hash": "H1"})
-        args = rpc.call_args[0][1]
+        args = rpc.call_args_list[0][0][1]
         self.assertEqual(args["filename"], "magnet:?n")
         self.assertTrue(args["download-dir"].startswith(ohara.TRANSMISSION_INCOMING + "/"))
         self.assertEqual(ohara.load_state()["downloads"]["H1"]["series"], "Naruto Gaiden")
@@ -463,6 +463,16 @@ class Transmission(Library):
         with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H4"}}), mock.patch.object(ohara, "lookup", return_value={}):
             ohara.grab("t3", "")
         self.assertFalse(ohara.load_state()["series"]["Ashtarte"]["webtoon"])
+
+    def test_grab_gives_each_torrent_its_seed_ratio_by_indexer(self):
+        ohara.found_releases["y"] = {"title": "Dandadan T01", "series": "Dandadan", "range": (1, 1), "indexer": "YggReborn", "_url": "magnet:?y"}
+        ohara.found_releases["n"] = {"title": "Dandadan v02", "series": "Dandadan", "range": (2, 2), "indexer": "Nyaa.si", "_url": "magnet:?n"}
+        for token, h in (("y", "HY"), ("n", "HN")):
+            with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": h}}) as rpc, mock.patch.object(ohara, "lookup", return_value={}):
+                ohara.grab(token, "")
+            self.assertEqual(rpc.call_args_list[1][0], ("torrent-set", {"ids": [h], "seedRatioMode": 1, "seedRatioLimit": ohara.SEED_RATIO if h == "HY" else 0}))
+        downloads = ohara.load_state()["downloads"]
+        self.assertEqual((downloads["HY"]["seed"], "seed" in downloads["HN"]), (ohara.SEED_RATIO, False))
 
     def test_grab_unknown_token(self):
         with self.assertRaises(KeyError):
@@ -587,6 +597,48 @@ class Import(Library):
         self.assertFalse((self.root / ".incoming" / "f1").exists())
         self.assertEqual(list(ohara.load_state()["downloads"]), ["H2"])
 
+    def test_a_seeded_download_is_filed_by_copy_and_left_seeding(self):
+        ohara.save_state({"downloads": {"H1": {"series": "Naruto", "title": "t", "folder": "f1", "seed": 1.0}}})
+        kept = cbz(self.root / ".incoming" / "f1" / "T1.cbz", ["1.png"])
+        with mock.patch.object(ohara, "torrents", return_value=[{"hashString": "H1", "percentDone": 1}]), mock.patch.object(ohara, "rpc") as rpc:
+            ohara.check_downloads()
+        rpc.assert_not_called()
+        self.assertTrue((self.root / "Naruto" / "T1.cbz").exists())
+        self.assertTrue(kept.exists())
+        state = ohara.load_state()
+        self.assertEqual(state["downloads"], {})
+        self.assertEqual({k: v for k, v in state["seeding"]["H1"].items() if k != "since"}, {"title": "t", "folder": "f1", "ratio": 1.0})
+
+    def test_a_kept_volume_is_copied_where_links_are_refused(self):
+        src = cbz(self.root / ".incoming" / "f" / "T2.cbz", ["1.png"])
+        (self.root / "X").mkdir()
+        with mock.patch.object(ohara.os, "link", side_effect=OSError("exfat")):
+            ohara.place(src, self.root / "X" / "T2.cbz", keep=True)
+        self.assertEqual((self.root / "X" / "T2.cbz").read_bytes(), src.read_bytes())
+        self.assertEqual([p.name for p in (self.root / "X").iterdir()], ["T2.cbz"])
+
+    def test_check_seeding_drops_what_gave_back_enough(self):
+        now = ohara.time.time()
+        old = now - (ohara.SEED_DAYS + 1) * 86400
+        seeding = {h: {"title": h, "folder": h.lower(), "ratio": 1.0, "since": since}
+                   for h, since in (("AT_RATIO", now), ("STILL", now), ("TOO_OLD", old), ("GONE", now), ("PAUSED", now))}
+        ohara.save_state({"seeding": seeding})
+        for h in seeding:
+            (self.root / ".incoming" / h.lower()).mkdir(parents=True)
+        live = [{"hashString": "AT_RATIO", "status": 0, "uploadRatio": 1.0}, {"hashString": "STILL", "status": 6, "uploadRatio": 0.3},
+                {"hashString": "TOO_OLD", "status": 6, "uploadRatio": 0.1}, {"hashString": "PAUSED", "status": 0, "uploadRatio": 0.2}]
+        with mock.patch.object(ohara, "rpc", return_value={"torrents": live}) as rpc:
+            ohara.check_seeding()
+        removed = [c[0][1]["ids"] for c in rpc.call_args_list if c[0][0] == "torrent-remove"]
+        self.assertEqual(removed, [["AT_RATIO"], ["TOO_OLD"]])
+        self.assertEqual(sorted(ohara.load_state()["seeding"]), ["PAUSED", "STILL"])
+        self.assertEqual(sorted(p.name for p in (self.root / ".incoming").iterdir()), ["paused", "still"])
+
+    def test_check_seeding_asks_nothing_when_none_seeds(self):
+        with mock.patch.object(ohara, "rpc") as rpc:
+            ohara.check_seeding()
+        rpc.assert_not_called()
+
     def test_check_downloads_small_first_and_one_failure_holds_nothing_back(self):
         ohara.save_state({"downloads": {"BIG": {"series": "One Piece", "title": "pack", "folder": "big"},
                                         "BAD": {"series": "X", "title": "bad", "folder": "bad"},
@@ -596,7 +648,7 @@ class Import(Library):
                 {"hashString": "SMALL", "percentDone": 1, "totalSize": 10}]
         filed = []
 
-        def fake_import(source, series):
+        def fake_import(source, series, keep=False):
             if source.name == "bad":
                 raise OSError("unreadable")
             filed.append(source.name)
@@ -915,7 +967,7 @@ class Reading(Library):
 
     def test_broken_state_file(self):
         (self.root / ".ohara" / "state.json").write_text("{")
-        self.assertEqual(ohara.load_state(), {"downloads": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}, "dismissed": {},
+        self.assertEqual(ohara.load_state(), {"downloads": {}, "seeding": {}, "series": {}, "lookups": {}, "settings": {}, "spines": {}, "music": {}, "moods": {}, "franky": {}, "chapters": {}, "dismissed": {},
                                              "readers": {"1": {"name": "", "progress": {}}}})
 
 
@@ -2063,7 +2115,7 @@ class Brook(Library):
                 mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "H"}}) as rpc:
             status = ohara.grab_music("Frieren")
         self.assertEqual(status, {"state": "downloading", "title": "Frieren OST"})
-        self.assertIn("/ost-", rpc.call_args[0][1]["download-dir"])
+        self.assertIn("/ost-", rpc.call_args_list[0][0][1]["download-dir"])
         self.assertEqual(ohara.load_state()["downloads"]["H"]["kind"], "ost")
         ohara.found_releases["t2"] = dict(best, token="t2")
         with mock.patch.object(ohara, "rpc", return_value={"torrent-duplicate": {"hashString": "H2"}}):

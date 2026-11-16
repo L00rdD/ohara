@@ -50,6 +50,11 @@ PROWLARR_CONFIG = os.environ.get("OHARA_PROWLARR_CONFIG", "/config/prowlarr/conf
 TRANSMISSION_USER = os.environ.get("OHARA_TRANSMISSION_USER", "")
 TRANSMISSION_PASSWORD = os.environ.get("OHARA_TRANSMISSION_PASSWORD", "")
 INDEXERS = [n.strip() for n in os.environ.get("OHARA_INDEXERS", "YggReborn,Nyaa.si,Knaben").split(",") if n.strip()]
+# the indexers whose torrents keep seeding once filed (a tracker that counts your ratio),
+# up to SEED_RATIO or for SEED_DAYS at most; the others stop as soon as they are done
+SEED_INDEXERS = {n.strip().lower() for n in os.environ.get("OHARA_SEED_INDEXERS", "YggReborn").split(",") if n.strip()}
+SEED_RATIO = float(os.environ.get("OHARA_SEED_RATIO", "1"))
+SEED_DAYS = float(os.environ.get("OHARA_SEED_DAYS", "14"))
 ANILIST = "https://graphql.anilist.co"
 FOLLOW_EVERY = float(os.environ.get("OHARA_FOLLOW_HOURS", "12")) * 3600
 NEW_FOR = 7 * 86400  # a volume stays "new" a week, until it is opened
@@ -80,7 +85,7 @@ def load_state():
         state = json.loads((STATE_DIR / "state.json").read_text())
     except (OSError, ValueError):
         state = {}
-    for key in ("downloads", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters", "dismissed"):
+    for key in ("downloads", "seeding", "series", "lookups", "settings", "spines", "music", "moods", "franky", "chapters", "dismissed"):
         state.setdefault(key, {})
     if "readers" not in state:  # a state from before the readers: its reading is the first one's
         state["readers"] = {FIRST_READER: {"name": "", "progress": state.pop("progress", {})}}
@@ -504,21 +509,35 @@ def torrent_source(url):
     return {"metainfo": base64.b64encode(data).decode()}
 
 
+def seed_ratio(r):
+    """The ratio a release's torrent seeds to: SEED_RATIO on the SEED_INDEXERS, else 0."""
+    return SEED_RATIO if r.get("indexer", "").lower() in SEED_INDEXERS else 0
+
+
+def add_torrent(r, folder):
+    """Hands a release to Transmission, into .incoming/folder, with its own seed ratio
+    (Transmission's own setting is left alone, it may serve others). Returns the torrent."""
+    args = torrent_source(r["_url"])
+    args["download-dir"] = f"{TRANSMISSION_INCOMING}/{folder}"
+    added = rpc("torrent-add", args)
+    t = added.get("torrent-added") or added.get("torrent-duplicate")
+    rpc("torrent-set", {"ids": [t["hashString"]], "seedRatioMode": 1, "seedRatioLimit": seed_ratio(r)})
+    return t
+
+
 def grab(token, series, follow=False, query=""):
     r = found_releases.get(token)
     if not r:
         raise KeyError("search again: this result is no longer known")
     series = safe_name(series or r["series"])
     folder = hashlib.sha1(token.encode()).hexdigest()[:10]
-    args = torrent_source(r["_url"])
-    args["download-dir"] = f"{TRANSMISSION_INCOMING}/{folder}"
-    added = rpc("torrent-add", args)
-    t = added.get("torrent-added") or added.get("torrent-duplicate")
+    t = add_torrent(r, folder)
     meta = lookup(series)
     webtoon = webtoon_pack(r["title"]) or is_webtoon(series, load_state()["series"].get(series, {}))
 
     def note(state):
-        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": r["range"], "at": time.time()}
+        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": r["range"], "at": time.time(),
+                                               **({"seed": seed_ratio(r)} if seed_ratio(r) else {})}
         entry = series_entry(state, series)
         entry["anilist"] = meta.get("id") or entry.get("anilist")
         if webtoon:
@@ -598,9 +617,10 @@ def owned_numbers(dest):
     return {volume_number(p.name) for p in volumes(dest)} - {None} if dest.exists() else set()
 
 
-def import_download(source, series):
-    """Moves every volume found under source into MANGA/series, leaving out the tomes
-    already there (a pack often repeats them). Returns how many came in."""
+def import_download(source, series, keep=False):
+    """Moves every volume found under source into MANGA/series (copies them when keep,
+    for the torrent to seed), leaving out the tomes already there (a pack often repeats
+    them). Returns how many came in."""
     dest = MANGA / series
     owned = owned_numbers(dest)
     dest.mkdir(parents=True, exist_ok=True)
@@ -609,23 +629,37 @@ def import_download(source, series):
     for p in files:
         if p.suffix.lower() not in KEPT + ARCHIVES or volume_number(p.name) in owned:
             continue
-        file_volume(p, dest)
+        file_volume(p, dest, keep)
         count += 1
     if not count and not any(p.suffix.lower() in KEPT + ARCHIVES for p in files):
         count = import_image_folders(source, dest)
     return count
 
 
-def file_volume(p, dest):
+def file_volume(p, dest, keep=False):
     """Files one volume into dest under a name not taken: a .zip becomes a .cbz, a
-    .cbr/.cb7 is converted. Returns where it went."""
+    .cbr/.cb7 is converted; kept where it was when keep. Returns where it went."""
     ext = p.suffix.lower()
     target = free_name(dest, p.name if ext in (".cbz", ".pdf", ".epub") else p.stem + ".cbz")
     if ext in ARCHIVES:
         unpack_archive(p, target)
     else:
-        shutil.move(str(p), target)
+        place(p, target, keep)
     return target
+
+
+def place(p, target, keep=False):
+    """Moves p to target, or when keep leaves it for its torrent to seed: a hard link
+    where the disk has them, else a copy written under a hidden name first."""
+    if not keep:
+        shutil.move(str(p), target)
+        return
+    try:
+        os.link(p, target)
+    except OSError:
+        part = target.with_name(f".{target.name}.part")
+        shutil.copyfile(p, part)
+        part.replace(target)
 
 
 # ---------- adding by hand: volumes sent from the computer or the phone ----------
@@ -722,20 +756,59 @@ def check_downloads():
 
 
 def file_download(torrent_hash, d):
-    """Files one finished download, then drops its torrent and its folder; the tomes
-    that came in are said on Discord."""
+    """Files one finished download, then drops its torrent and its folder, or leaves
+    them seeding when its tracker counts the ratio; the tomes that came in are said on
+    Discord."""
     source = INCOMING / d["folder"]
+    keep = bool(d.get("seed"))
     if d.get("kind") == "ost":
-        import_music(source, d["series"])
+        import_music(source, d["series"], keep)
     else:
         before = owned_numbers(MANGA / d["series"])
-        import_download(source, d["series"])
+        import_download(source, d["series"], keep)
         came = sorted(owned_numbers(MANGA / d["series"]) - before)
         if came:
             tell(den_den.arrived, d["series"], came)
+    if keep:
+        update_state(lambda s: seed_on(s, torrent_hash, d))
+        return
     rpc("torrent-remove", {"ids": [torrent_hash], "delete-local-data": True})
     shutil.rmtree(source, ignore_errors=True)
     update_state(lambda s: s["downloads"].pop(torrent_hash, None))
+
+
+def seed_on(state, torrent_hash, d):
+    """A filed download whose torrent goes on seeding: no longer a download."""
+    state["downloads"].pop(torrent_hash, None)
+    state["seeding"][torrent_hash] = {"title": d["title"], "folder": d["folder"], "ratio": d["seed"], "since": time.time()}
+
+
+def seeded(s, t, now):
+    """Whether a seeding torrent has given back enough: Transmission stopped it at its
+    ratio, SEED_DAYS went by, or it is no longer in Transmission."""
+    if not t:
+        return True
+    stopped_at_ratio = t["status"] == 0 and t["uploadRatio"] >= s["ratio"] - 0.01
+    return stopped_at_ratio or now - s["since"] > SEED_DAYS * 86400
+
+
+def check_seeding():
+    """Drops the seeding torrents that have given back enough, with their folder. Runs
+    every 30 s."""
+    seeding = load_state()["seeding"]
+    if not seeding:
+        return
+    found = rpc("torrent-get", {"ids": list(seeding), "fields": ["hashString", "status", "uploadRatio"]}).get("torrents", [])
+    live = {t["hashString"]: t for t in found}
+    now = time.time()
+    for h, s in seeding.items():
+        if not seeded(s, live.get(h), now):
+            continue
+        if h in live:
+            rpc("torrent-remove", {"ids": [h], "delete-local-data": True})
+        shutil.rmtree(INCOMING / s["folder"], ignore_errors=True)
+        update_state(lambda state, h=h: state["seeding"].pop(h, None))
+        print(f"seeded: {s['title']} (ratio {live.get(h, {}).get('uploadRatio', '?')})", flush=True)
 
 
 # ---------- following: new volumes of a series, fetched by themselves ----------
@@ -994,6 +1067,7 @@ def follows_due():
 def tick():
     backup_state()
     check_downloads()
+    check_seeding()
     read_spines()
     brook_pass()
     chapters_pass()
@@ -1241,13 +1315,11 @@ def grab_music(series, token=None):
             return music_status(series)
         r = found[0]
     folder = "ost-" + hashlib.sha1(r["token"].encode()).hexdigest()[:10]
-    args = torrent_source(r["_url"])
-    args["download-dir"] = f"{TRANSMISSION_INCOMING}/{folder}"
-    added = rpc("torrent-add", args)
-    t = added.get("torrent-added") or added.get("torrent-duplicate")
+    t = add_torrent(r, folder)
 
     def note(state):
-        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time()}
+        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time(),
+                                               **({"seed": seed_ratio(r)} if seed_ratio(r) else {})}
         skipped = state["music"].get(series, {}).get("skipped", [])
         state["music"][series] = {"state": "downloading", "title": r["title"], "at": time.time(), **({"skipped": skipped} if skipped else {})}
     update_state(note)
@@ -1261,9 +1333,9 @@ def unpack_audio(source):
             extract(p, p.with_suffix(""))
 
 
-def import_music(source, series):
+def import_music(source, series, keep=False):
     """Files a soundtrack's tracks in MUSIC/series/<album>/, each album with its cover
-    when the release has one. Returns how many tracks came in."""
+    when the release has one (copied when keep). Returns how many tracks came in."""
     unpack_audio(source)
     dest = MUSIC / safe_name(series)
     tracks = [p for p in source.rglob("*") if p.suffix.lower() in brook.AUDIO]
@@ -1274,7 +1346,7 @@ def import_music(source, series):
         art = next((a for a in sorted(p.parent.iterdir()) if a.suffix.lower() in brook.ART), None)
         if art and not any((folder / f"cover{x}").exists() for x in brook.ART):
             shutil.copy(art, folder / ("cover" + art.suffix.lower()))
-        shutil.move(str(p), free_name(folder, p.name))
+        place(p, free_name(folder, p.name), keep)
     set_music(series, state="ready" if tracks else "notfound")
     return len(tracks)
 
