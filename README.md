@@ -152,14 +152,52 @@ Tree of Knowledge.
 
 ## Run it
 
-You need Docker, a Prowlarr with at least one indexer that files manga under *Books*
-(for French volumes, YggReborn; Nyaa.si and Knaben for the rest), and Transmission.
+Ohara does not search nor download by itself: it leans on three other programs,
+each in its own container.
 
-1. Copy `docker-compose.yml`, set `OHARA_PROWLARR_KEY`, the library folder and the
-   network Prowlarr and Transmission are on.
+- [Prowlarr](https://prowlarr.com/) searches the torrent sites, its *indexers*.
+- [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) gets Prowlarr past the
+  sites behind Cloudflare, as YggReborn is.
+- [Transmission](https://transmissionbt.com/) downloads the torrents.
+
+All you need is [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on
+Windows and macOS): `docker-compose.yml` brings the three along.
+
+### From nothing
+
+1. Get Ohara, and say where the library goes if not in `./manga`:
+
+   ```bash
+   git clone https://github.com/L00rdD/ohara.git
+   cd ohara
+   cp .env.example .env    # MANGA_DIR, PUID/PGID (the folder's owner), TZ
+   docker compose up -d --build
+   ```
+
+2. Set up Prowlarr, at `http://<host>:9696`, once:
+   - it first asks for a login to create;
+   - *Settings → Indexers → ＋ → FlareSolverr*: host `http://flaresolverr:8191`, tag
+     `flaresolverr`;
+   - *Indexers → Add Indexer*: the sites to search, at least one that files manga
+     under *Books*. For French volumes, YggReborn (give it the `flaresolverr` tag);
+     Nyaa.si and Knaben for the rest. Each asks for what it needs (some want an
+     account on the site).
+
+3. Open Ohara at `http://<host>:8585`. Prowlarr's API key is read from its own
+   configuration, and Transmission already sees the library: there is nothing else to
+   set. Its settings say whether each indexer answers.
+
+### With your own Prowlarr and Transmission
+
+1. Copy `docker-compose.existing.yml`, set `OHARA_PROWLARR_KEY` (Prowlarr → Settings
+   → General → API Key), the library folder and the network Prowlarr and Transmission
+   are on.
 2. Transmission must see the library's `.incoming` folder: mount the same disk in
    both containers and set `OHARA_TRANSMISSION_DIR` to the path Transmission uses.
-3. `docker compose up -d --build`, then open `http://<host>:8585`.
+   This is the step most often missed: when it is wrong, downloads finish but never
+   reach the library.
+3. `docker compose -f docker-compose.existing.yml up -d --build`, then open
+   `http://<host>:8585`.
 
 | Variable | Default | |
 | :--- | :--- | :--- |

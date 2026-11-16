@@ -1,28 +1,65 @@
-# Ohara next to Prowlarr and Transmission. Join the network they are on (here the
-# default network of another Compose project called "mediaserver") or put Ohara in
-# the same docker-compose.yml as them.
+# Ohara with everything it needs, for a machine that has none of it yet:
+#   - Prowlarr, which searches the torrent sites (its "indexers"),
+#   - FlareSolverr, which gets Prowlarr past the sites protected by Cloudflare,
+#   - Transmission, which downloads the torrents.
+# Already running Prowlarr and Transmission? Use docker-compose.existing.yml instead.
+#
+# Optional settings go in a .env file next to this one (see .env.example):
+#   MANGA_DIR  the library folder (default ./manga)
+#   PUID/PGID  the owner of that folder (default 1000, `id` on Linux tells yours)
+#   TZ         the time zone (default Europe/Paris)
 services:
   ohara:
     build: .
     container_name: ohara
     init: true
-    user: "1000:1000"            # the owner of your library folder
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
-      - TZ=Europe/Paris
-      - OHARA_PROWLARR_URL=http://prowlarr:9696
-      - OHARA_PROWLARR_KEY=      # Prowlarr → Settings → General → API Key
-      - OHARA_TRANSMISSION_URL=http://transmission:9091/transmission/rpc
-      # where Transmission sees the incoming folder (the same disk as /manga)
-      - OHARA_TRANSMISSION_DIR=/data/manga/.incoming
+      - TZ=${TZ:-Europe/Paris}
+      # Prowlarr's API key is read from its config.xml, mounted below: nothing to copy
     volumes:
-      - /path/to/manga:/manga
+      - ${MANGA_DIR:-./manga}:/manga
+      - ./config/prowlarr:/config/prowlarr:ro
     ports:
       - 8585:8585
-    networks:
-      - mediaserver
+    depends_on:
+      - prowlarr
+      - transmission
     restart: unless-stopped
 
-networks:
-  mediaserver:
-    name: mediaserver_default
-    external: true
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+    restart: unless-stopped
+
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./config/transmission:/config
+      # the library where Ohara expects Transmission to see it (/data/manga/.incoming)
+      - ${MANGA_DIR:-./manga}:/data/manga
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
