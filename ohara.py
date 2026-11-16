@@ -34,7 +34,7 @@ import chopper  # noqa: E402
 import den_den  # noqa: E402
 import franky  # noqa: E402
 import robin  # noqa: E402
-from names import (LANG_ORDER, chapter_range, guess_series, is_chapter, language, natural, norm,  # noqa: E402
+from names import (LANG_ORDER, chapter_range, guess_series, is_chapter, language, natural, norm, same_indexer,  # noqa: E402
                    safe_name, speed, tome_range, volume_label, volume_number, webtoon_pack)
 
 MANGA = Path(os.environ.get("OHARA_MANGA", "/manga"))
@@ -52,7 +52,7 @@ TRANSMISSION_PASSWORD = os.environ.get("OHARA_TRANSMISSION_PASSWORD", "")
 INDEXERS = [n.strip() for n in os.environ.get("OHARA_INDEXERS", "YggReborn,Nyaa.si,Knaben").split(",") if n.strip()]
 # the indexers whose torrents keep seeding once filed (a tracker that counts your ratio),
 # up to SEED_RATIO or for SEED_DAYS at most; the others stop as soon as they are done
-SEED_INDEXERS = {n.strip().lower() for n in os.environ.get("OHARA_SEED_INDEXERS", "YggReborn").split(",") if n.strip()}
+SEED_INDEXERS = [n.strip() for n in os.environ.get("OHARA_SEED_INDEXERS", "YggReborn").split(",") if n.strip()]
 SEED_RATIO = float(os.environ.get("OHARA_SEED_RATIO", "1"))
 SEED_DAYS = float(os.environ.get("OHARA_SEED_DAYS", "14"))
 ANILIST = "https://graphql.anilist.co"
@@ -327,7 +327,7 @@ def chosen_indexers():
 def indexer_ids(key):
     found = http_json(f"{PROWLARR_URL}/api/v1/indexer", headers={"X-Api-Key": key})
     chosen = chosen_indexers()
-    return [i["id"] for i in found if i["name"] in chosen and i.get("enable")]
+    return [i["id"] for i in found if same_indexer(i["name"], chosen) and i.get("enable")]
 
 
 def indexers():
@@ -339,7 +339,7 @@ def indexers():
     # set aside by Prowlarr after failures, until disabledTill
     failing = {s["indexerId"] for s in http_json(f"{PROWLARR_URL}/api/v1/indexerstatus", headers={"X-Api-Key": key}) if (s.get("disabledTill") or "") > now}
     chosen = chosen_indexers()
-    out = [{"name": i["name"], "on": bool(i.get("enable")), "failing": i["id"] in failing, "chosen": i["name"] in chosen,
+    out = [{"name": i["name"], "on": bool(i.get("enable")), "failing": i["id"] in failing, "chosen": same_indexer(i["name"], chosen),
             "books": any(c.get("id", 0) // 1000 == 7 for c in (i.get("capabilities") or {}).get("categories", []))} for i in found]
     return sorted(out, key=lambda i: (not i["chosen"], i["name"].lower()))
 
@@ -511,7 +511,7 @@ def torrent_source(url):
 
 def seed_ratio(r):
     """The ratio a release's torrent seeds to: SEED_RATIO on the SEED_INDEXERS, else 0."""
-    return SEED_RATIO if r.get("indexer", "").lower() in SEED_INDEXERS else 0
+    return SEED_RATIO if same_indexer(r.get("indexer", ""), SEED_INDEXERS) else 0
 
 
 def add_torrent(r, folder):

@@ -208,7 +208,7 @@ Windows and macOS): `docker-compose.yml` brings the three along.
 | `OHARA_PROWLARR_URL` | `http://prowlarr:9696` | |
 | `OHARA_PROWLARR_KEY` | | Prowlarr's API key. Without it, Ohara reads it from `OHARA_PROWLARR_CONFIG`. |
 | `OHARA_PROWLARR_CONFIG` | `/config/prowlarr/config.xml` | Prowlarr's `config.xml`, mounted read-only, if you prefer that to the key. |
-| `OHARA_INDEXERS` | `YggReborn,Nyaa.si,Knaben` | The Prowlarr indexers to search until some are ticked in the settings. |
+| `OHARA_INDEXERS` | `YggReborn,Nyaa.si,Knaben` | The Prowlarr indexers to search until some are ticked in the settings. Names are compared without case or Prowlarr's suffix: `YggReborn` is also `YggReborn (API)`. |
 | `OHARA_SEED_INDEXERS` | `YggReborn` | The indexers whose torrents seed once filed, as their trackers ban those who only take. The others stop at once. |
 | `OHARA_SEED_RATIO` | `1` | How much they give back (uploaded / downloaded) before they are removed. |
 | `OHARA_SEED_DAYS` | `14` | They are removed after so many days anyway, ratio or not, not to fill the disk. |

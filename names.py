@@ -9,6 +9,8 @@ FRENCH = re.compile(r"(?i)\b(fr|vf|vff|french|fran[cç]ais|truefrench)\b")
 ENGLISH = re.compile(r"(?i)\b(eng|english|scanlated|digital|viz|yen press)\b")
 JAPANESE = re.compile(r"(?i)\b(jp|jap|raw)\b|[぀-ヿ]|巻")
 FRENCH_TRACKERS = ("YggReborn", "Torrent9", "World-torrent")
+# what Prowlarr adds to a name: "YggReborn (API)" is YggReborn
+INDEXER_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
 LANG_ORDER = {"FR": 0, "EN": 1, "?": 2, "JP": 3}
 
 # "T05", "Tome 5", "Tome #5", "Tome n°5", "v05", "Vol. 5", "Volume 5"; not the t of "Scantrad"
@@ -114,6 +116,17 @@ def webtoon_pack(title):
     return bool(WEBTOON.search(title) or english_chapters)
 
 
+def indexer_key(name):
+    """An indexer's name as Ohara compares it: "YggReborn (API)", Prowlarr's own name
+    for it, and "yggreborn" are one indexer."""
+    return INDEXER_SUFFIX.sub("", name or "").strip().lower()
+
+
+def same_indexer(name, names):
+    """Whether name is one of names, whatever their case or Prowlarr's suffix."""
+    return indexer_key(name) in {indexer_key(n) for n in names}
+
+
 def language(title, indexer=""):
     """FR, EN, JP or ?; a French tracker's release is French unless it says otherwise."""
     if FRENCH.search(title):
@@ -122,7 +135,7 @@ def language(title, indexer=""):
         return "EN"
     if JAPANESE.search(title):
         return "JP"
-    return "FR" if indexer in FRENCH_TRACKERS else "?"
+    return "FR" if same_indexer(indexer, FRENCH_TRACKERS) else "?"
 
 
 def speed(seeders):

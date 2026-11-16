@@ -137,6 +137,14 @@ class Names(unittest.TestCase):
         self.assertEqual(ohara.language("One Piece 1198 [JP]"), "JP")
         self.assertEqual(ohara.language("ONE PIECE カラー版 第001-106巻"), "JP")
         self.assertEqual(ohara.language("Naruto v01-72 [VIZ]", "YggReborn"), "EN")
+        # Prowlarr's own name for it
+        self.assertEqual(ohara.language("Naruto en couleurs - T01-72 CBZ", "YggReborn (API)"), "FR")
+
+    def test_indexer_names(self):
+        self.assertTrue(ohara.same_indexer("YggReborn (API)", ["YggReborn", "Nyaa.si"]))
+        self.assertTrue(ohara.same_indexer("yggreborn", ["YggReborn (API)"]))
+        self.assertFalse(ohara.same_indexer("YggTorrent", ["YggReborn"]))
+        self.assertFalse(ohara.same_indexer("", ["YggReborn"]))
 
     def test_natural_order(self):
         names = ["T10.cbz", "T2.cbz", "T1.cbz"]
@@ -288,6 +296,13 @@ class Indexers(Library):
             self.assertEqual(ohara.indexer_ids("K"), [2])
         ohara.choose_indexers([])
         self.assertEqual(ohara.chosen_indexers(), ohara.INDEXERS)
+
+    def test_a_fresh_prowlarr_names_ygg_its_own_way(self):
+        fresh = [dict(i, name="YggReborn (API)") if i["id"] == 1 else i for i in self.FOUND]
+        fake = lambda url, data=None, headers=None, timeout=60: [] if url.endswith("/indexerstatus") else fresh
+        with mock.patch.object(ohara, "prowlarr_key", return_value="K"), mock.patch.object(ohara, "http_json", side_effect=fake):
+            self.assertEqual(ohara.indexer_ids("K"), [1, 4])
+            self.assertIn(("YggReborn (API)", True), [(i["name"], i["chosen"]) for i in ohara.indexers()])
 
 
 class AniList(Library):
@@ -473,6 +488,7 @@ class Transmission(Library):
             self.assertEqual(rpc.call_args_list[1][0], ("torrent-set", {"ids": [h], "seedRatioMode": 1, "seedRatioLimit": ohara.SEED_RATIO if h == "HY" else 0}))
         downloads = ohara.load_state()["downloads"]
         self.assertEqual((downloads["HY"]["seed"], "seed" in downloads["HN"]), (ohara.SEED_RATIO, False))
+        self.assertEqual(ohara.seed_ratio({"indexer": "YggReborn (API)"}), ohara.SEED_RATIO)
 
     def test_grab_unknown_token(self):
         with self.assertRaises(KeyError):
