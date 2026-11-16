@@ -119,6 +119,8 @@ test("tomes and releases in both languages", () => {
   assert.equal(fr(() => Ohara.describe(r)), "en français, 3,6 Go, téléchargement rapide");
   assert.equal(en(() => Ohara.describe(r)), "in French, 3.6 GB, fast download");
   assert.equal(fr(() => Ohara.describe({ ...r, speed: "autre" })), "en français, 3,6 Go, téléchargement autre");
+  assert.equal(fr(() => Ohara.describe({ ...r, indexer: "YggReborn" })), "en français, 3,6 Go, téléchargement rapide, sur YggReborn");
+  assert.equal(en(() => Ohara.describe({ ...r, indexer: "Nyaa.si" })), "in French, 3.6 GB, fast download, from Nyaa.si");
 });
 
 test("where a volume is in its reading", () => {

@@ -15,8 +15,10 @@ const Words = (() => {
     return (range ? W().tomes(range[0], range[1]) : W().tomesUnknown);
   }
 
+  // language, size and speed of a release, and the indexer it comes from when known
   function describe(r) {
-    return W().release(W().langs[r.lang], size(r.size), W().speeds[r.speed] || r.speed);
+    const said = W().release(W().langs[r.lang], size(r.size), W().speeds[r.speed] || r.speed);
+    return r.indexer ? `${said}, ${W().from(r.indexer)}` : said;
   }
 
   function readingState(v) {
