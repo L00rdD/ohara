@@ -479,16 +479,11 @@ class Transmission(Library):
             ohara.grab("t3", "")
         self.assertFalse(ohara.load_state()["series"]["Ashtarte"]["webtoon"])
 
-    def test_grab_gives_each_torrent_its_seed_ratio_by_indexer(self):
+    def test_grab_leaves_the_seed_ratio_to_transmission(self):
         ohara.found_releases["y"] = {"title": "Dandadan T01", "series": "Dandadan", "range": (1, 1), "indexer": "YggReborn", "_url": "magnet:?y"}
-        ohara.found_releases["n"] = {"title": "Dandadan v02", "series": "Dandadan", "range": (2, 2), "indexer": "Nyaa.si", "_url": "magnet:?n"}
-        for token, h in (("y", "HY"), ("n", "HN")):
-            with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": h}}) as rpc, mock.patch.object(ohara, "lookup", return_value={}):
-                ohara.grab(token, "")
-            self.assertEqual(rpc.call_args_list[1][0], ("torrent-set", {"ids": [h], "seedRatioMode": 1, "seedRatioLimit": ohara.SEED_RATIO if h == "HY" else 0}))
-        downloads = ohara.load_state()["downloads"]
-        self.assertEqual((downloads["HY"]["seed"], "seed" in downloads["HN"]), (ohara.SEED_RATIO, False))
-        self.assertEqual(ohara.seed_ratio({"indexer": "YggReborn (API)"}), ohara.SEED_RATIO)
+        with mock.patch.object(ohara, "rpc", return_value={"torrent-added": {"hashString": "HY"}}) as rpc, mock.patch.object(ohara, "lookup", return_value={}):
+            ohara.grab("y", "")
+        self.assertEqual([c[0][0] for c in rpc.call_args_list], ["torrent-add"])
 
     def test_grab_unknown_token(self):
         with self.assertRaises(KeyError):
@@ -602,28 +597,18 @@ class Import(Library):
         self.assertEqual(ohara.import_download(src, "Oneshot"), 1)
         self.assertTrue((self.root / "Oneshot" / "Oneshot.cbz").exists())
 
-    def test_check_downloads_files_the_finished_ones(self):
+    def test_check_downloads_files_the_finished_ones_and_leaves_them_seeding(self):
         ohara.save_state({"downloads": {"H1": {"series": "Naruto", "title": "t", "folder": "f1"}, "H2": {"series": "X", "title": "t", "folder": "f2"}}, "progress": {}})
-        cbz(self.root / ".incoming" / "f1" / "T1.cbz", ["1.png"])
+        kept = cbz(self.root / ".incoming" / "f1" / "T1.cbz", ["1.png"])
         live = [{"hashString": "H1", "percentDone": 1}, {"hashString": "H2", "percentDone": 0.4}, {"hashString": "H9", "percentDone": 1}]
         with mock.patch.object(ohara, "torrents", return_value=live), mock.patch.object(ohara, "rpc") as rpc:
-            ohara.check_downloads()
-        rpc.assert_called_once_with("torrent-remove", {"ids": ["H1"], "delete-local-data": True})
-        self.assertTrue((self.root / "Naruto" / "T1.cbz").exists())
-        self.assertFalse((self.root / ".incoming" / "f1").exists())
-        self.assertEqual(list(ohara.load_state()["downloads"]), ["H2"])
-
-    def test_a_seeded_download_is_filed_by_copy_and_left_seeding(self):
-        ohara.save_state({"downloads": {"H1": {"series": "Naruto", "title": "t", "folder": "f1", "seed": 1.0}}})
-        kept = cbz(self.root / ".incoming" / "f1" / "T1.cbz", ["1.png"])
-        with mock.patch.object(ohara, "torrents", return_value=[{"hashString": "H1", "percentDone": 1}]), mock.patch.object(ohara, "rpc") as rpc:
             ohara.check_downloads()
         rpc.assert_not_called()
         self.assertTrue((self.root / "Naruto" / "T1.cbz").exists())
         self.assertTrue(kept.exists())
         state = ohara.load_state()
-        self.assertEqual(state["downloads"], {})
-        self.assertEqual({k: v for k, v in state["seeding"]["H1"].items() if k != "since"}, {"title": "t", "folder": "f1", "ratio": 1.0})
+        self.assertEqual(list(state["downloads"]), ["H2"])
+        self.assertEqual({k: v for k, v in state["seeding"]["H1"].items() if k != "since"}, {"title": "t", "folder": "f1"})
 
     def test_a_kept_volume_is_copied_where_links_are_refused(self):
         src = cbz(self.root / ".incoming" / "f" / "T2.cbz", ["1.png"])
@@ -633,20 +618,19 @@ class Import(Library):
         self.assertEqual((self.root / "X" / "T2.cbz").read_bytes(), src.read_bytes())
         self.assertEqual([p.name for p in (self.root / "X").iterdir()], ["T2.cbz"])
 
-    def test_check_seeding_drops_what_gave_back_enough(self):
-        now = ohara.time.time()
-        old = now - (ohara.SEED_DAYS + 1) * 86400
-        seeding = {h: {"title": h, "folder": h.lower(), "ratio": 1.0, "since": since}
-                   for h, since in (("AT_RATIO", now), ("STILL", now), ("TOO_OLD", old), ("GONE", now), ("PAUSED", now))}
+    def test_check_seeding_drops_what_transmission_is_done_with(self):
+        old = ohara.time.time() - 365 * 86400
+        seeding = {h: {"title": h, "folder": h.lower(), "since": old} for h in ("DONE", "STILL", "GONE", "PAUSED")}
         ohara.save_state({"seeding": seeding})
         for h in seeding:
             (self.root / ".incoming" / h.lower()).mkdir(parents=True)
-        live = [{"hashString": "AT_RATIO", "status": 0, "uploadRatio": 1.0}, {"hashString": "STILL", "status": 6, "uploadRatio": 0.3},
-                {"hashString": "TOO_OLD", "status": 6, "uploadRatio": 0.1}, {"hashString": "PAUSED", "status": 0, "uploadRatio": 0.2}]
+        live = [{"hashString": "DONE", "status": 0, "isFinished": True, "uploadRatio": 0.85},
+                {"hashString": "STILL", "status": 6, "isFinished": False, "uploadRatio": 0.1},
+                {"hashString": "PAUSED", "status": 0, "isFinished": False, "uploadRatio": 0.2}]
         with mock.patch.object(ohara, "rpc", return_value={"torrents": live}) as rpc:
             ohara.check_seeding()
         removed = [c[0][1]["ids"] for c in rpc.call_args_list if c[0][0] == "torrent-remove"]
-        self.assertEqual(removed, [["AT_RATIO"], ["TOO_OLD"]])
+        self.assertEqual(removed, [["DONE"]])
         self.assertEqual(sorted(ohara.load_state()["seeding"]), ["PAUSED", "STILL"])
         self.assertEqual(sorted(p.name for p in (self.root / ".incoming").iterdir()), ["paused", "still"])
 
@@ -1811,7 +1795,7 @@ class DenDen(Library):
             cbz(self.root / ".incoming" / "f" / "Naruto T01.cbz", ["1.png"])  # had already
             cbz(self.root / ".incoming" / "f" / "Naruto T02.cbz", ["1.png"])
             with mock.patch.object(ohara, "rpc"):
-                ohara.file_download("H", {"series": "Naruto", "folder": "f"})
+                ohara.file_download("H", {"series": "Naruto", "title": "t", "folder": "f"})
             self.assertEqual(told[-1][1]["embeds"][0]["title"], "1 tome de Naruto arrivé")
             self.assertEqual(told[-1][1]["embeds"][0]["description"].split("\n")[0], "T2")
             ohara.save_state({"series": {"Naruto": {"follow": True}, "Bleach": {"follow": True}, "Dune": {"follow": False}}})

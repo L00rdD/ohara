@@ -251,10 +251,11 @@ class Cures(unittest.TestCase):
         ohara.save_state({"downloads": {"H": {"series": "Naruto", "title": "t", "folder": "abc", "range": [1, 1], "at": 1}}})
         self.cure("dl-file", hash="H")
         self.assertTrue((self.root / "Naruto" / "Naruto T01.cbz").exists())
-        self.assertFalse(src.exists())
-        self.assertEqual(ohara.load_state()["downloads"], {})
+        self.assertTrue(src.exists())  # left for its torrent to seed
+        state = ohara.load_state()
+        self.assertEqual((state["downloads"], list(state["seeding"])), ({}, ["H"]))
         self.assertEqual(self.cure("dl-file", hash="H"), {"gone": True})
-        self.assertEqual(self.removed(), [["H"]])
+        self.assertEqual(self.removed(), [])
 
     def test_dropping_an_unfiled_download(self):
         self.folder("abc", ["Naruto T01.cbz"])

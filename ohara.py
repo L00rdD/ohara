@@ -50,11 +50,6 @@ PROWLARR_CONFIG = os.environ.get("OHARA_PROWLARR_CONFIG", "/config/prowlarr/conf
 TRANSMISSION_USER = os.environ.get("OHARA_TRANSMISSION_USER", "")
 TRANSMISSION_PASSWORD = os.environ.get("OHARA_TRANSMISSION_PASSWORD", "")
 INDEXERS = [n.strip() for n in os.environ.get("OHARA_INDEXERS", "YggReborn,Nyaa.si,Knaben").split(",") if n.strip()]
-# the indexers whose torrents keep seeding once filed (a tracker that counts your ratio),
-# up to SEED_RATIO or for SEED_DAYS at most; the others stop as soon as they are done
-SEED_INDEXERS = [n.strip() for n in os.environ.get("OHARA_SEED_INDEXERS", "YggReborn").split(",") if n.strip()]
-SEED_RATIO = float(os.environ.get("OHARA_SEED_RATIO", "1"))
-SEED_DAYS = float(os.environ.get("OHARA_SEED_DAYS", "14"))
 ANILIST = "https://graphql.anilist.co"
 FOLLOW_EVERY = float(os.environ.get("OHARA_FOLLOW_HOURS", "12")) * 3600
 NEW_FOR = 7 * 86400  # a volume stays "new" a week, until it is opened
@@ -509,20 +504,13 @@ def torrent_source(url):
     return {"metainfo": base64.b64encode(data).decode()}
 
 
-def seed_ratio(r):
-    """The ratio a release's torrent seeds to: SEED_RATIO on the SEED_INDEXERS, else 0."""
-    return SEED_RATIO if same_indexer(r.get("indexer", ""), SEED_INDEXERS) else 0
-
-
 def add_torrent(r, folder):
-    """Hands a release to Transmission, into .incoming/folder, with its own seed ratio
-    (Transmission's own setting is left alone, it may serve others). Returns the torrent."""
+    """Hands a release to Transmission, into .incoming/folder; how long it seeds is
+    Transmission's call (its seed ratio), not Ohara's. Returns the torrent."""
     args = torrent_source(r["_url"])
     args["download-dir"] = f"{TRANSMISSION_INCOMING}/{folder}"
     added = rpc("torrent-add", args)
-    t = added.get("torrent-added") or added.get("torrent-duplicate")
-    rpc("torrent-set", {"ids": [t["hashString"]], "seedRatioMode": 1, "seedRatioLimit": seed_ratio(r)})
-    return t
+    return added.get("torrent-added") or added.get("torrent-duplicate")
 
 
 def grab(token, series, follow=False, query=""):
@@ -536,8 +524,7 @@ def grab(token, series, follow=False, query=""):
     webtoon = webtoon_pack(r["title"]) or is_webtoon(series, load_state()["series"].get(series, {}))
 
     def note(state):
-        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": r["range"], "at": time.time(),
-                                               **({"seed": seed_ratio(r)} if seed_ratio(r) else {})}
+        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": r["range"], "at": time.time()}
         entry = series_entry(state, series)
         entry["anilist"] = meta.get("id") or entry.get("anilist")
         if webtoon:
@@ -756,40 +743,30 @@ def check_downloads():
 
 
 def file_download(torrent_hash, d):
-    """Files one finished download, then drops its torrent and its folder, or leaves
-    them seeding when its tracker counts the ratio; the tomes that came in are said on
-    Discord."""
+    """Files one finished download by copy (or hard link), leaving its torrent seeding
+    until Transmission is done with it; the tomes that came in are said on Discord."""
     source = INCOMING / d["folder"]
-    keep = bool(d.get("seed"))
     if d.get("kind") == "ost":
-        import_music(source, d["series"], keep)
+        import_music(source, d["series"], keep=True)
     else:
         before = owned_numbers(MANGA / d["series"])
-        import_download(source, d["series"], keep)
+        import_download(source, d["series"], keep=True)
         came = sorted(owned_numbers(MANGA / d["series"]) - before)
         if came:
             tell(den_den.arrived, d["series"], came)
-    if keep:
-        update_state(lambda s: seed_on(s, torrent_hash, d))
-        return
-    rpc("torrent-remove", {"ids": [torrent_hash], "delete-local-data": True})
-    shutil.rmtree(source, ignore_errors=True)
-    update_state(lambda s: s["downloads"].pop(torrent_hash, None))
+    update_state(lambda s: seed_on(s, torrent_hash, d))
 
 
 def seed_on(state, torrent_hash, d):
     """A filed download whose torrent goes on seeding: no longer a download."""
     state["downloads"].pop(torrent_hash, None)
-    state["seeding"][torrent_hash] = {"title": d["title"], "folder": d["folder"], "ratio": d["seed"], "since": time.time()}
+    state["seeding"][torrent_hash] = {"title": d["title"], "folder": d["folder"], "since": time.time()}
 
 
-def seeded(s, t, now):
-    """Whether a seeding torrent has given back enough: Transmission stopped it at its
-    ratio, SEED_DAYS went by, or it is no longer in Transmission."""
-    if not t:
-        return True
-    stopped_at_ratio = t["status"] == 0 and t["uploadRatio"] >= s["ratio"] - 0.01
-    return stopped_at_ratio or now - s["since"] > SEED_DAYS * 86400
+def seeded(t):
+    """Whether a seeding torrent is done: Transmission stopped it at its seed limit
+    (not a pause by hand), or it is no longer in Transmission."""
+    return not t or (t["status"] == 0 and t["isFinished"])
 
 
 def check_seeding():
@@ -798,11 +775,10 @@ def check_seeding():
     seeding = load_state()["seeding"]
     if not seeding:
         return
-    found = rpc("torrent-get", {"ids": list(seeding), "fields": ["hashString", "status", "uploadRatio"]}).get("torrents", [])
+    found = rpc("torrent-get", {"ids": list(seeding), "fields": ["hashString", "status", "isFinished", "uploadRatio"]}).get("torrents", [])
     live = {t["hashString"]: t for t in found}
-    now = time.time()
     for h, s in seeding.items():
-        if not seeded(s, live.get(h), now):
+        if not seeded(live.get(h)):
             continue
         if h in live:
             rpc("torrent-remove", {"ids": [h], "delete-local-data": True})
@@ -1318,8 +1294,7 @@ def grab_music(series, token=None):
     t = add_torrent(r, folder)
 
     def note(state):
-        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time(),
-                                               **({"seed": seed_ratio(r)} if seed_ratio(r) else {})}
+        state["downloads"][t["hashString"]] = {"series": series, "title": r["title"], "folder": folder, "range": None, "kind": "ost", "at": time.time()}
         skipped = state["music"].get(series, {}).get("skipped", [])
         state["music"][series] = {"state": "downloading", "title": r["title"], "at": time.time(), **({"skipped": skipped} if skipped else {})}
     update_state(note)
